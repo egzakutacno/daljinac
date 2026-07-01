@@ -19,12 +19,12 @@ Write-Host "[1/2] Downloading daljinac.exe..."
 Invoke-WebRequest "$ServerUrl/daljinac.exe" -OutFile $Exe -UseBasicParsing
 Write-Host "       $((Get-Item $Exe).Length) bytes"
 
-Write-Host "[2/2] Installing auto-start..."
-& $Exe -install
-Start-Sleep 2
-Start-Process -FilePath $Exe -WindowStyle Hidden
+Write-Host "[2/2] Installing auto-start + publishing URL to RPi..."
+schtasks /delete /tn Daljinac /f 2>$null | Out-Null
+schtasks /create /tn Daljinac /tr "`"$Exe`" --rpi-url $ServerUrl" /sc ONLOGON /ru $env:USERNAME /f | Out-Null
+Start-Process -FilePath $Exe -ArgumentList "--rpi-url","$ServerUrl" -WindowStyle Hidden
 
 Write-Host ""
-Write-Host "DONE. Agent is running." -ForegroundColor Green
+Write-Host "DONE. Agent is running with auto URL publishing." -ForegroundColor Green
 Write-Host "  Tray: check ^ arrow near clock for Daljinac icon"
 Write-Host "  Remove: $Exe -remove"
