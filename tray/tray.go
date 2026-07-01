@@ -179,7 +179,7 @@ func (t *Tray) Run() {
 		log.Println("[tray] class registered OK")
 	}
 
-	hwnd, _, _ := createWindowExW.Call(0, uintptr(unsafe.Pointer(className)), 0, 0, 0, 0, 0, 0, 0, hInstance, 0)
+	hwnd, _, _ := createWindowExW.Call(0, uintptr(unsafe.Pointer(className)), 0, 0, 0, 0, 0, 0, 0, hInstance, 0, 0)
 	if hwnd == 0 {
 		log.Println("[tray] CreateWindowExW failed — no tray")
 		return
