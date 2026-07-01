@@ -252,16 +252,25 @@ func doUpdate() error {
 	out.Close()
 
 	current, _ := os.Executable()
+
+	argsFile := filepath.Join(tmpDir, "args.txt")
+	fullCmd := fmt.Sprintf(`"%s" %s`, current, strings.Join(os.Args[1:], " "))
+	os.WriteFile(argsFile, []byte(fullCmd), 0644)
+
 	bat := filepath.Join(tmpDir, "up.bat")
 	batch := fmt.Sprintf(`@echo off
+set /p CMD=<"%s"
 timeout /t 3 /nobreak > nul
 taskkill /f /im daljinac.exe > nul 2>&1
-copy /y "%s" "%s" > nul
-start "" "%s"
+copy /y "%s" "%s" > nul 2>&1
+schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /f > nul 2>&1
+schtasks /run /tn Daljinac > nul 2>&1
+del "%s"
 del "%%~f0"
-`, newExe, current, current)
+`, argsFile, newExe, current, argsFile)
 	os.WriteFile(bat, []byte(batch), 0644)
 
+	log.Println("Launching UAC update...")
 	shell32 := syscall.NewLazyDLL("shell32.dll")
 	se := shell32.NewProc("ShellExecuteW")
 	se.Call(0,
