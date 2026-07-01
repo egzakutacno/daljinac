@@ -3,6 +3,7 @@ package tray
 import (
 	"fmt"
 	"log"
+	"os"
 	"runtime"
 	"sync"
 	"syscall"
@@ -160,7 +161,7 @@ func (t *Tray) Run() {
 	log.Println("[tray] starting")
 
 	hInstance, _, _ := getModuleHandleW.Call(0)
-	className := syscall.StringToUTF16Ptr("DaljinacTray")
+	className := syscall.StringToUTF16Ptr(fmt.Sprintf("DaljinacTray_%d", os.Getpid()))
 	cb := syscall.NewCallback(func(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		return t.wndProc(hwnd, msg, wParam, lParam)
 	})
