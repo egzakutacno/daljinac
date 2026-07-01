@@ -37,7 +37,7 @@ func main() {
 	initLog()
 
 	apiKey := flag.String("key", "sk-remctrl-8f3a1b9c", "API key for HTTP API")
-	port := flag.Int("port", 8080, "HTTP API port")
+	port := flag.Int("port", 8081, "HTTP API port")
 	tag := flag.String("tag", "", "Machine tag")
 	noTray := flag.Bool("notray", false, "Run without system tray")
 	flag.Parse()
