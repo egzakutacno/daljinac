@@ -92,18 +92,26 @@ func main() {
 	seenID := ""
 
 	publish := func(turl string) {
-		if *rpiURL == "" || turl == "" {
+		if turl == "" {
 			return
 		}
+		rpi := *rpiURL
+		if rpi == "" {
+			rpi = discoverRPiURL()
+		}
+		if rpi == "" {
+			return
+		}
+
 		if seenID == "" {
 			ak := rpiGenKey()
 			mid := rpiMid(hostname)
-			if id := rpiRegister(*rpiURL, mid, ak, hostname); id != "" {
+			if id := rpiRegister(rpi, mid, ak, hostname); id != "" {
 				seenID = id
 			}
 		}
 		if seenID != "" {
-			rpiPublish(*rpiURL, seenID, turl)
+			rpiPublish(rpi, seenID, turl)
 		}
 	}
 
@@ -218,7 +226,25 @@ func rpiPublish(rpi, mid, url string) {
 	resp.Body.Close()
 }
 
+func discoverRPiURL() string {
+	resp, err := http.Get(gistRaw)
+	if err != nil {
+		log.Printf("gist: %v", err)
+		return ""
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	url := strings.TrimSpace(string(b))
+	if url == "" || !strings.HasPrefix(url, "https://") {
+		return ""
+	}
+	return url
+}
+
 const updateURL = "https://github.com/egzakutacno/daljinac/releases/latest/download/daljinac.exe"
+
+const gistAPI = "https://api.github.com/gists/0c3de11a3381ae878b09626b306d04d1"
+const gistRaw = "https://gist.githubusercontent.com/egzakutacno/0c3de11a3381ae878b09626b306d04d1/raw/tunnel-url.txt"
 
 func doUpdate() error {
 	tmpDir := filepath.Join(os.TempDir(), "daljinac-update")
