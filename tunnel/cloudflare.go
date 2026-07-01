@@ -72,6 +72,7 @@ func (t *Tunnel) download() error {
 }
 
 func (t *Tunnel) Start() {
+	exec.Command("taskkill", "/f", "/im", "cloudflared.exe").Run()
 	go t.Run()
 }
 

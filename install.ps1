@@ -1,30 +1,27 @@
-# Daljinac — One-Line Installer (Windows)
-# Run as Administrator in PowerShell
-
 $ServerUrl = if ($u) { $u } else { $null }
-if (-not $ServerUrl) { Write-Host "Usage: `$u='URL'; irm ... | iex" -ForegroundColor Red; exit 1 }
+if (-not $ServerUrl) { Write-Host "ERROR: Set `$u before running" -ForegroundColor Red; exit 1 }
 
 $Dir = "C:\daljinac"
 $Exe = "$Dir\daljinac.exe"
 
 Write-Host "Daljinac Installer" -ForegroundColor Cyan
-Write-Host "  Server: $ServerUrl" -ForegroundColor Gray
-Write-Host "  Install: $Dir" -ForegroundColor Gray
-Write-Host ""
+Write-Host "  Server: $ServerUrl"
+Write-Host "  Dir:    $Dir`n"
 
 mkdir $Dir -Force | Out-Null
-taskkill /f /im daljinac.exe 2>$null | Out-Null
+taskkill /f /im daljinac.exe 2>$null
+taskkill /f /im cloudflared.exe 2>$null
 
-Write-Host "[1/2] Downloading daljinac.exe..."
+Write-Host "[1/2] Downloading..."
 Invoke-WebRequest "$ServerUrl/daljinac.exe" -OutFile $Exe -UseBasicParsing
 Write-Host "       $((Get-Item $Exe).Length) bytes"
 
-Write-Host "[2/2] Installing auto-start + publishing URL to RPi..."
-schtasks /delete /tn Daljinac /f 2>$null | Out-Null
-schtasks /create /tn Daljinac /tr "`"$Exe`" --rpi-url $ServerUrl" /sc ONLOGON /ru $env:USERNAME /f | Out-Null
-Start-Process -FilePath $Exe -ArgumentList "--rpi-url","$ServerUrl" -WindowStyle Hidden
+Write-Host "[2/2] Installing + starting..."
+schtasks /delete /tn Daljinac /f 2>$null
+schtasks /create /tn Daljinac /tr "`"$Exe`" --rpi-url $ServerUrl" /sc ONLOGON /f | Out-Null
+Start-Process "$Exe" -ArgumentList "--rpi-url","$ServerUrl"
 
 Write-Host ""
-Write-Host "DONE. Agent is running with auto URL publishing." -ForegroundColor Green
-Write-Host "  Tray: check ^ arrow near clock for Daljinac icon"
+Write-Host "DONE." -ForegroundColor Green
+Write-Host "  Tray: look for Daljinac icon in system tray"
 Write-Host "  Remove: $Exe -remove"
