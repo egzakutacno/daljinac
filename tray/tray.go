@@ -2,6 +2,7 @@ package tray
 
 import (
 	"fmt"
+	"log"
 	"runtime"
 	"sync"
 	"syscall"
@@ -153,8 +154,10 @@ func (t *Tray) hIcon() uintptr {
 
 func (t *Tray) Run() {
 	if runtime.GOOS != "windows" {
+		log.Println("[tray] skipping: not windows")
 		return
 	}
+	log.Println("[tray] starting")
 
 	hInstance, _, _ := getModuleHandleW.Call(0)
 	className := syscall.StringToUTF16Ptr("DaljinacTray")
@@ -169,13 +172,20 @@ func (t *Tray) Run() {
 		HbrBackground: 6,
 		LpszClassName: className,
 	}
-	registerClassExW.Call(uintptr(unsafe.Pointer(&wc)))
+	reg, _, _ := registerClassExW.Call(uintptr(unsafe.Pointer(&wc)))
+	if reg == 0 {
+		log.Println("[tray] RegisterClassExW failed")
+	} else {
+		log.Println("[tray] class registered OK")
+	}
 
 	hwnd, _, _ := createWindowExW.Call(0, uintptr(unsafe.Pointer(className)), 0, 0, 0, 0, 0, 0, 0, hInstance, 0)
 	if hwnd == 0 {
+		log.Println("[tray] CreateWindowExW failed — no tray")
 		return
 	}
 	t.hwnd = hwnd
+	log.Println("[tray] window created OK")
 
 	hIcon, _, _ := loadIconW.Call(0, uintptr(IDI_APPLICATION))
 	t.nid = NOTIFYICONDATAW{
@@ -187,7 +197,8 @@ func (t *Tray) Run() {
 	}
 	t.nid.CbSize = uint32(unsafe.Sizeof(t.nid))
 	copy(t.nid.SzTip[:], syscall.StringToUTF16("Daljinac — "+t.hostname))
-	shellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&t.nid)))
+	add, _, _ := shellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&t.nid)))
+	log.Printf("[tray] icon added (ret=%d)", add)
 
 	var msg struct {
 		HWnd    uintptr
@@ -198,6 +209,7 @@ func (t *Tray) Run() {
 		PtX     int32
 		PtY     int32
 	}
+	log.Println("[tray] entering message pump")
 	for {
 		ret, _, _ := getMessageW.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
 		if ret == 0 {
@@ -207,6 +219,7 @@ func (t *Tray) Run() {
 		dispatchMessageW.Call(uintptr(unsafe.Pointer(&msg)))
 	}
 
+	log.Println("[tray] message pump exited, cleaning up")
 	shellNotifyIconW.Call(NIM_DELETE, uintptr(unsafe.Pointer(&t.nid)))
 	destroyWindow.Call(hwnd)
 }

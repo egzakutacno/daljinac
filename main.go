@@ -135,6 +135,7 @@ func main() {
 	}
 
 	if !*noTray {
+		log.Println("[main] starting tray goroutine")
 		go tr.Run()
 	} else {
 		log.Println("Headless mode")
