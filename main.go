@@ -20,6 +20,7 @@ import (
 	"unsafe"
 
 	"agent/server"
+	"agent/tray"
 	"agent/tunnel"
 )
 
@@ -69,23 +70,31 @@ func main() {
 	}
 
 	shutdown := make(chan struct{})
+	hostname, _ := os.Hostname()
 
 	srv := server.New(*apiKey, *tag)
-	tr := server.NewTray(srv, *tag)
-	tr.SetUpdateFunc(func() {
+	tr := tray.New(hostname)
+	tr.OnUpdate = func() {
 		if err := doUpdate(); err != nil {
 			log.Printf("Update: %v", err)
 		}
-	})
+	}
 
 	var t *tunnel.Tunnel
+	tr.OnExit = func() {
+		if t != nil {
+			t.Stop()
+		}
+		srv.Stop()
+		close(shutdown)
+	}
+
 	seenID := ""
 
 	publish := func(turl string) {
 		if *rpiURL == "" || turl == "" {
 			return
 		}
-		hostname, _ := os.Hostname()
 		if seenID == "" {
 			ak := rpiGenKey()
 			mid := rpiMid(hostname)
@@ -99,69 +108,47 @@ func main() {
 	}
 
 	onConnect := func(url string) {
-		h, _ := os.Hostname()
-		srv.SetInfo("daljinac", h, url)
+		srv.SetInfo("daljinac", hostname, url)
 		tr.SetURL(url)
-		tr.SetStatus(server.StatusRunning)
+		tr.SetRunning()
 		publish(url)
 	}
 
-	startHTTP := func() {
-		go func() {
-			defer func() { recover() }()
-			addr := fmt.Sprintf(":%d", *port)
-			if err := srv.Start(addr); err != nil {
-				log.Printf("HTTP error: %v", err)
-			}
-		}()
-	}
-
-	startTunnel := func() {
-		t = tunnel.New(*port, onConnect)
-		t.Start()
-	}
-
-	stopAll := func() {
-		if t != nil {
-			t.Stop()
-		}
-		srv.Stop()
-		tr.SetStatus(server.StatusStopped)
-	}
-
-	tr.SetStopFunc(func() {
-		stopAll()
-		close(shutdown)
-	})
-
 	if !*noTray {
-		tr.Run()
+		go tr.Run()
 	} else {
 		log.Println("Headless mode")
 	}
 
-	startHTTP()
-	startTunnel()
+	go func() {
+		defer func() { recover() }()
+		addr := fmt.Sprintf(":%d", *port)
+		if err := srv.Start(addr); err != nil {
+			log.Printf("HTTP error: %v", err)
+		}
+	}()
+
+	t = tunnel.New(*port, onConnect)
+	t.Start()
 
 	if *noTray {
 		select {}
 	}
 
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+
 	select {
 	case <-shutdown:
-	case <-tr.StopCh():
-	case <-func() chan os.Signal {
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-		return c
-	}():
+	case <-sig:
 	}
 
 	log.Println("Shutdown")
-	stopAll()
-	if !*noTray {
-		tr.Stop()
+	if t != nil {
+		t.Stop()
 	}
+	srv.Stop()
+	tr.Stop()
 }
 
 func doInstall() {
