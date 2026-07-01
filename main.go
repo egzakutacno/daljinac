@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -43,9 +44,8 @@ func main() {
 		}
 	}()
 	initLog()
-	exec.Command("taskkill", "/f", "/im", "daljinac.exe").Run()
 	exec.Command("taskkill", "/f", "/im", "cloudflared.exe").Run()
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	apiKey := flag.String("key", "sk-remctrl-8f3a1b9c", "API key")
 	port := flag.Int("port", 8081, "HTTP port")
@@ -72,6 +72,14 @@ func main() {
 		doRemove()
 		return
 	}
+
+	// Check if port is available — exit if another instance is running
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
+	if err != nil {
+		log.Printf("Port %d in use — another instance running. Exiting.", *port)
+		return
+	}
+	ln.Close()
 
 	shutdown := make(chan struct{})
 	hostname, _ := os.Hostname()
