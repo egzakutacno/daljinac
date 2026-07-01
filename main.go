@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"agent/server"
@@ -42,6 +43,9 @@ func main() {
 		}
 	}()
 	initLog()
+	exec.Command("taskkill", "/f", "/im", "daljinac.exe").Run()
+	exec.Command("taskkill", "/f", "/im", "cloudflared.exe").Run()
+	time.Sleep(500 * time.Millisecond)
 
 	apiKey := flag.String("key", "sk-remctrl-8f3a1b9c", "API key")
 	port := flag.Int("port", 8081, "HTTP port")
