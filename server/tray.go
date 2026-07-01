@@ -90,6 +90,7 @@ const (
 	IDM_SEPARATOR_1
 	IDM_INSTALL
 	IDM_REMOVE
+	IDM_UPDATE
 	IDM_SEPARATOR_2
 	IDM_EXIT
 )
@@ -145,6 +146,7 @@ type Tray struct {
 	startFunc         func()
 	stopFunc          func()
 	restartTunnelFunc func()
+	updateFunc        func()
 }
 
 func NewTray(srv *Server, tag string) *Tray {
@@ -158,6 +160,7 @@ func NewTray(srv *Server, tag string) *Tray {
 func (t *Tray) SetStartFunc(fn func())       { t.startFunc = fn }
 func (t *Tray) SetStopFunc(fn func())        { t.stopFunc = fn }
 func (t *Tray) SetRestartTunnelFunc(fn func()) { t.restartTunnelFunc = fn }
+func (t *Tray) SetUpdateFunc(fn func())      { t.updateFunc = fn }
 
 func (t *Tray) loadIcons() {
 	t.hIcons[0] = t.loadSysIcon(IDI_SHIELD)       // stopped
@@ -364,6 +367,8 @@ func (t *Tray) showContextMenu() {
 	appendMenuW.Call(hMenu, MF_STRING, IDM_INSTALL, ptr("Install Auto-Start"))
 	appendMenuW.Call(hMenu, MF_STRING, IDM_REMOVE, ptr("Remove Auto-Start"))
 	appendMenuW.Call(hMenu, MF_SEPARATOR, 0, 0)
+	appendMenuW.Call(hMenu, MF_STRING, IDM_UPDATE, ptr("Check for Updates"))
+	appendMenuW.Call(hMenu, MF_SEPARATOR, 0, 0)
 	appendMenuW.Call(hMenu, MF_STRING, IDM_EXIT, ptr("Exit"))
 
 	var p POINT
@@ -389,6 +394,10 @@ func (t *Tray) handleMenuCommand(cmd int) {
 		}
 	case IDM_COPY_URL:
 		t.copyURL()
+	case IDM_UPDATE:
+		if t.updateFunc != nil {
+			go t.updateFunc()
+		}
 	case IDM_INSTALL:
 		t.installService()
 	case IDM_REMOVE:

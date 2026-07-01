@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"unsafe"
 
 	"agent/server"
 	"agent/tunnel"
@@ -136,6 +137,12 @@ func main() {
 	tr.SetStartFunc(startAgent)
 	tr.SetStopFunc(stopAgent)
 	tr.SetRestartTunnelFunc(restartTunnel)
+	tr.SetUpdateFunc(func() {
+		log.Println("Update requested from tray")
+		if err := selfUpdate(); err != nil {
+			log.Printf("Update failed: %v", err)
+		}
+	})
 
 	if !*noTray {
 		tr.Run()
@@ -243,4 +250,71 @@ func registerAndPublishURL(rpiURL, machineID, apiKey, hostname, tunnelURL string
 		return fmt.Errorf("publish url HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+const updateURL = "https://github.com/egzakutacno/daljinac/releases/latest/download/daljinac.exe"
+
+func selfUpdate() error {
+	tmpDir := filepath.Join(os.TempDir(), "daljinac-update")
+	os.MkdirAll(tmpDir, 0755)
+
+	newExe := filepath.Join(tmpDir, "daljinac.exe")
+	log.Printf("Downloading update from %s", updateURL)
+	if err := downloadFile(updateURL, newExe); err != nil {
+		return fmt.Errorf("download: %w", err)
+	}
+
+	currentExe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("get exe: %w", err)
+	}
+
+	batPath := filepath.Join(tmpDir, "update.bat")
+	batch := fmt.Sprintf(`@echo off
+timeout /t 3 /nobreak > nul
+taskkill /f /im daljinac.exe > nul 2>&1
+timeout /t 2 /nobreak > nul
+copy /y "%s" "%s" > nul
+del /q "%s" > nul
+start "" "%s"
+del "%%~f0"
+`, strings.ReplaceAll(newExe, `\`, `\\`), strings.ReplaceAll(currentExe, `\`, `\\`),
+		strings.ReplaceAll(newExe, `\`, `\\`), strings.ReplaceAll(currentExe, `\`, `\\`))
+
+	if err := os.WriteFile(batPath, []byte(batch), 0644); err != nil {
+		return fmt.Errorf("write batch: %w", err)
+	}
+
+	log.Println("Launching UAC update...")
+	shell32 := syscall.NewLazyDLL("shell32.dll")
+	shellExecuteW := shell32.NewProc("ShellExecuteW")
+	ret, _, _ := shellExecuteW.Call(0,
+		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("runas"))),
+		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("cmd"))),
+		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("/C \""+batPath+"\""))),
+		0, 5)
+	if ret <= 32 {
+		return fmt.Errorf("UAC elevation failed")
+	}
+	log.Println("Update launched, exiting")
+	os.Exit(0)
+	return nil
+}
+
+func downloadFile(url, dest string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	out, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(out, resp.Body)
+	out.Close()
+	return err
 }
