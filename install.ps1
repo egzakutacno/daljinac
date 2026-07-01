@@ -25,8 +25,8 @@ Write-Host "       $((Get-Item $Exe).Length) bytes"
 
 Write-Host "[3/3] Installing + starting..."
 schtasks /delete /tn Daljinac /f 2>$null
-schtasks /create /tn Daljinac /tr "`"$Exe`"" /sc ONLOGON /f | Out-Null
-Start-Process "$Exe"
+schtasks /create /tn Daljinac /tr "`"$Exe`"" /sc ONLOGON /f
+schtasks /run /tn Daljinac
 
 Write-Host ""
 Write-Host "DONE." -ForegroundColor Green
