@@ -1,15 +1,21 @@
 package main
 
 import (
+	"bytes"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"agent/server"
@@ -39,6 +45,7 @@ func main() {
 	apiKey := flag.String("key", "sk-remctrl-8f3a1b9c", "API key for HTTP API")
 	port := flag.Int("port", 8081, "HTTP API port")
 	tag := flag.String("tag", "", "Machine tag")
+	rpiURL := flag.String("rpi-url", "", "RPi server URL (publish tunnel URL there)")
 	noTray := flag.Bool("notray", false, "Run without system tray")
 	flag.Parse()
 
@@ -56,19 +63,38 @@ func main() {
 			remove()
 			return
 		}
+	} else if *rpiURL == "" {
+		if v := os.Getenv("RPI_URL"); v != "" {
+			*rpiURL = v
+		}
 	}
 
-	log.Printf("Daljinac starting (tag=%q, port=%d)", *tag, *port)
+	log.Printf("Daljinac starting (tag=%q, port=%d, rpi=%s)", *tag, *port, *rpiURL)
 
 	srv := server.New(*apiKey, *tag)
 	tr := server.NewTray(srv, *tag)
 
 	var t *tunnel.Tunnel
+	publishURL := func(url string) {
+		if *rpiURL == "" || url == "" {
+			return
+		}
+		hostname, _ := os.Hostname()
+		mid := rpiMachineID(hostname)
+		apiKey := rpiAPIKey()
+		if err := registerAndPublishURL(*rpiURL, mid, apiKey, hostname, url); err != nil {
+			log.Printf("Failed to publish URL to RPi: %v", err)
+		} else {
+			log.Printf("Published tunnel URL to RPi: %s", url)
+		}
+	}
+
 	onConnected := func(url string) {
 		hostname, _ := os.Hostname()
 		srv.SetInfo("daljinac", hostname, url)
 		tr.SetURL(url)
 		tr.SetStatus(server.StatusRunning)
+		publishURL(url)
 	}
 
 	startAgent := func() {
@@ -159,4 +185,62 @@ func install() {
 func remove() {
 	exec.Command("taskkill", "/f", "/im", filepath.Base(os.Args[0])).Run()
 	exec.Command("schtasks", "/delete", "/tn", "Daljinac", "/f").Run()
+}
+
+func rpiMachineID(hostname string) string {
+	hostname = strings.ToLower(hostname)
+	if len(hostname) > 15 {
+		hostname = hostname[:15]
+	}
+	hostname = strings.NewReplacer(
+		".", "-", " ", "-", "_", "-",
+	).Replace(hostname)
+	return fmt.Sprintf("%s-%x", hostname, os.Getpid())
+}
+
+func rpiAPIKey() string {
+	b := make([]byte, 24)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func registerAndPublishURL(rpiURL, machineID, apiKey, hostname, tunnelURL string) error {
+	base := strings.TrimRight(rpiURL, "/")
+
+	reg := map[string]string{
+		"name":     hostname,
+		"api_key":  apiKey,
+		"hostname": hostname,
+		"metadata": `{"type":"daljinac"}`,
+	}
+	data, _ := json.Marshal(reg)
+	resp, err := http.Post(base+"/api/v1/agent/register", "application/json", bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("register: %w", err)
+	}
+	var regResp struct {
+		MachineID string `json:"machine_id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&regResp)
+	resp.Body.Close()
+
+	mid := regResp.MachineID
+	if mid == "" {
+		mid = machineID
+	}
+
+	body := map[string]string{
+		"machine_id": mid,
+		"tunnel_url": tunnelURL,
+	}
+	data, _ = json.Marshal(body)
+	resp, err = http.Post(base+"/api/v1/agent/url", "application/json", bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("publish url: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("publish url HTTP %d", resp.StatusCode)
+	}
+	return nil
 }
