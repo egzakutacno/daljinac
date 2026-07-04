@@ -6,10 +6,13 @@ $URL = "https://github.com/egzakutacno/daljinac/releases/latest/download/daljina
 
 Write-Host "[1/3] Downloading daljinac.exe from GitHub..."
 mkdir $Dir -Force | Out-Null
+Invoke-WebRequest $URL -OutFile "$Exe.new" -UseBasicParsing
+Write-Host "       $((Get-Item "$Exe.new").Length) bytes"
+
+Write-Host "[1b/3] Replacing old binary..."
 taskkill /f /im daljinac.exe 2>$null
 taskkill /f /im zrok2.exe 2>$null
-Invoke-WebRequest $URL -OutFile $Exe -UseBasicParsing
-Write-Host "       $((Get-Item $Exe).Length) bytes"
+Move-Item -Force "$Exe.new" $Exe
 
 Write-Host "[2/3] Installing scheduled task..."
 schtasks /delete /tn Daljinac /f 2>$null
