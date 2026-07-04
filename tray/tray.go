@@ -42,6 +42,8 @@ var (
 	rtlMoveMemory      = kernel32.NewProc("RtlMoveMemory")
 	getModuleHandleW   = kernel32.NewProc("GetModuleHandleW")
 	getLastError       = kernel32.NewProc("GetLastError")
+	createIconFromResourceEx = user32.NewProc("CreateIconFromResourceEx")
+	destroyIconProc          = user32.NewProc("DestroyIcon")
 )
 
 const (
@@ -99,6 +101,12 @@ type NOTIFYICONDATAW struct {
 	HBalloonIcon     uintptr
 }
 
+const (
+	IconDisconnected = 0
+	IconConnecting   = 1
+	IconConnected    = 2
+)
+
 type Tray struct {
 	hwnd     uintptr
 	nid      NOTIFYICONDATAW
@@ -107,6 +115,12 @@ type Tray struct {
 	url      string
 	running  bool
 	mu       sync.RWMutex
+
+	redIco   uintptr
+	grayIco  uintptr
+	greenIco uintptr
+
+	statusIcon int
 
 	OnCopyURL       func()
 	OnUpdate        func()
@@ -148,12 +162,29 @@ func (t *Tray) updateTip() {
 }
 
 func (t *Tray) hIcon() uintptr {
-	if t.running {
-		h, _, _ := loadIconW.Call(0, uintptr(IDI_APPLICATION))
-		return h
+	switch t.statusIcon {
+	case IconConnected:
+		if t.greenIco != 0 {
+			return t.greenIco
+		}
+	case IconConnecting:
+		if t.grayIco != 0 {
+			return t.grayIco
+		}
+	default:
+		if t.redIco != 0 {
+			return t.redIco
+		}
 	}
-	h, _, _ := loadIconW.Call(0, uintptr(32512))
+	h, _, _ := loadIconW.Call(0, uintptr(IDI_APPLICATION))
 	return h
+}
+
+func (t *Tray) SetStatusIcon(status int) {
+	t.mu.Lock()
+	t.statusIcon = status
+	t.mu.Unlock()
+	t.updateTip()
 }
 
 func (t *Tray) Run() {
@@ -164,6 +195,11 @@ func (t *Tray) Run() {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	log.Println("[tray] starting")
+
+	t.redIco = createColorIcon(220, 50, 50)
+	t.grayIco = createColorIcon(160, 160, 160)
+	t.greenIco = createColorIcon(50, 200, 50)
+	t.statusIcon = IconConnecting
 
 	hInstance, _, _ := getModuleHandleW.Call(0)
 	className := syscall.StringToUTF16Ptr(fmt.Sprintf("DaljinacTray_%d", os.Getpid()))
@@ -195,13 +231,12 @@ func (t *Tray) Run() {
 	t.hwnd = hwnd
 	log.Println("[tray] window created OK")
 
-	hIcon, _, _ := loadIconW.Call(0, uintptr(IDI_APPLICATION))
 	t.nid = NOTIFYICONDATAW{
 		HWnd:             hwnd,
 		UID:              1,
 		UFlags:           NIF_MESSAGE | NIF_ICON | NIF_TIP,
 		UCallbackMessage: WM_APP + 1,
-		HIcon:            hIcon,
+		HIcon:            t.hIcon(),
 	}
 	t.nid.CbSize = uint32(unsafe.Sizeof(t.nid))
 	copy(t.nid.SzTip[:], syscall.StringToUTF16(fmt.Sprintf("Daljinac v%s — %s", t.version, t.hostname)))
@@ -244,6 +279,9 @@ func (t *Tray) Stop() {
 	if t.hwnd != 0 {
 		postMessageW.Call(t.hwnd, WM_DESTROY, 0, 0)
 	}
+	destroyIcon(t.redIco)
+	destroyIcon(t.grayIco)
+	destroyIcon(t.greenIco)
 }
 
 func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
