@@ -31,7 +31,7 @@ func initLog() {
 	}
 }
 
-const version = "2.3.0"
+const version = "2.3.1"
 
 func main() {
 	defer func() {
@@ -142,14 +142,15 @@ func main() {
 
 func doInstall() {
 	exe, _ := os.Executable()
-	name := "Daljinac"
-	tr := fmt.Sprintf(`"%s"`, exe)
-
-	exec.Command("schtasks", "/create",
-		"/tn", name, "/tr", tr,
-		"/sc", "ONLOGON", "/rl", "HIGHEST", "/f",
-	).Run()
-	exec.Command("schtasks", "/run", "/tn", name).Run()
+	ps := fmt.Sprintf(`
+$action = New-ScheduledTaskAction -Execute '%s'
+$trigger = New-ScheduledTaskTrigger -AtLogon
+$settings = New-ScheduledTaskSettingsSet -DisallowStartIfOnBatteries:$$false -StopIfGoingOnBatteries:$$false
+$principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
+Register-ScheduledTask -TaskName Daljinac -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+`, exe)
+	exec.Command("powershell", "-NoProfile", "-Command", ps).Run()
+	exec.Command("schtasks", "/run", "/tn", "Daljinac").Run()
 	log.Println("Installed (scheduled task)")
 }
 
@@ -202,6 +203,8 @@ taskkill /f /im daljinac.exe >> %%LOG%% 2>&1
 timeout /t 2 /nobreak > nul
 echo %%date%% %%time%% [update] registering scheduled task >> %%LOG%%
 schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /rl HIGHEST /f >> %%LOG%% 2>&1
+echo %%date%% %%time%% [update] fixing battery settings >> %%LOG%%
+powershell -NoProfile -Command "$t=Get-ScheduledTask Daljinac; $t.Settings.DisallowStartIfOnBatteries=$false; $t.Settings.StopIfGoingOnBatteries=$false; Set-ScheduledTask $t" >> %%LOG%% 2>&1
 schtasks /run /tn Daljinac >> %%LOG%% 2>&1
 echo %%date%% %%time%% [update] done, cleaning up >> %%LOG%%
 del "%s"

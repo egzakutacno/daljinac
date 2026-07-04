@@ -13,7 +13,12 @@ Write-Host "       $((Get-Item $Exe).Length) bytes"
 
 Write-Host "[2/3] Installing scheduled task..."
 schtasks /delete /tn Daljinac /f 2>$null
-schtasks /create /tn Daljinac /tr "`"$Exe`"" /sc ONLOGON /rl HIGHEST /f
+
+$action  = New-ScheduledTaskAction -Execute $Exe
+$trigger = New-ScheduledTaskTrigger -AtLogon
+$settings = New-ScheduledTaskSettingsSet -DisallowStartIfOnBatteries:$false -StopIfGoingOnBatteries:$false
+$principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
+Register-ScheduledTask -TaskName Daljinac -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
 
 Write-Host "[3/3] Starting agent..."
 schtasks /run /tn Daljinac
