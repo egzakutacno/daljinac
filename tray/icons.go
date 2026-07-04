@@ -1,7 +1,6 @@
 package tray
 
 import (
-	"encoding/binary"
 	"log"
 	"syscall"
 	"unsafe"
@@ -10,12 +9,12 @@ import (
 var (
 	gdi32          = syscall.NewLazyDLL("gdi32.dll")
 	createDIBitmap = gdi32.NewProc("CreateDIBSection")
+	createBitmap   = gdi32.NewProc("CreateBitmap")
+	createCompatibleDC = gdi32.NewProc("CreateCompatibleDC")
+	deleteDC       = gdi32.NewProc("DeleteDC")
+	deleteObject   = gdi32.NewProc("DeleteObject")
+	selectObject   = gdi32.NewProc("SelectObject")
 )
-
-type BITMAPINFO struct {
-	Header BITMAPINFOHEADER
-	Colors [4]byte
-}
 
 type BITMAPINFOHEADER struct {
 	Size          uint32
@@ -31,20 +30,58 @@ type BITMAPINFOHEADER struct {
 	ClrImportant  uint32
 }
 
-func makeICO(r, g, b byte) []byte {
+type BITMAPINFO struct {
+	Header BITMAPINFOHEADER
+	Colors [4]byte
+}
+
+type ICONINFO struct {
+	FIcon    uint32
+	XHotspot uint32
+	YHotspot uint32
+	HbmMask  uintptr
+	HbmColor uintptr
+}
+
+func createColorIcon(r, g, b byte) uintptr {
 	w, h := 16, 16
-	xorSize := w * h * 4
-	andSize := (w * h) / 8
+	dc, _, _ := createCompatibleDC.Call(0)
+	if dc == 0 {
+		log.Printf("[tray] createColorIcon: CreateCompatibleDC failed")
+		return 0
+	}
+	defer deleteDC.Call(dc)
 
-	bih := make([]byte, 40)
-	binary.LittleEndian.PutUint32(bih[0:], 40)
-	binary.LittleEndian.PutUint32(bih[4:], uint32(w))
-	binary.LittleEndian.PutUint32(bih[8:], uint32(h*2))
-	binary.LittleEndian.PutUint16(bih[12:], 1)
-	binary.LittleEndian.PutUint16(bih[14:], 32)
-	binary.LittleEndian.PutUint32(bih[16:], 0)
+	bmi := BITMAPINFO{
+		Header: BITMAPINFOHEADER{
+			Size:     40,
+			Width:    int32(w),
+			Height:   int32(-h),
+			Planes:   1,
+			BitCount: 32,
+		},
+	}
 
-	xor := make([]byte, xorSize)
+	var bits uintptr
+	hbmp, _, _ := createDIBitmap.Call(
+		dc,
+		uintptr(unsafe.Pointer(&bmi)),
+		0,
+		uintptr(unsafe.Pointer(&bits)),
+		0, 0,
+	)
+	if hbmp == 0 {
+		log.Printf("[tray] createColorIcon: CreateDIBSection failed")
+		return 0
+	}
+	defer deleteObject.Call(hbmp)
+
+	if bits == 0 {
+		log.Printf("[tray] createColorIcon: got nil bits")
+		return 0
+	}
+
+	pixels := (*[16 * 16 * 4]byte)(unsafe.Pointer(bits))[:16*16*4]
 	cx, cy := w/2, h/2
 	radius2 := (w/2 - 1) * (w/2 - 1)
 	for y := 0; y < h; y++ {
@@ -52,65 +89,29 @@ func makeICO(r, g, b byte) []byte {
 			dx, dy := x-cx, y-cy
 			off := (y*w + x) * 4
 			if dx*dx+dy*dy <= radius2 {
-				xor[off+0] = b
-				xor[off+1] = g
-				xor[off+2] = r
-				xor[off+3] = 255
+				pixels[off+0] = b
+				pixels[off+1] = g
+				pixels[off+2] = r
+				pixels[off+3] = 255
 			}
 		}
 	}
 
-	andMask := make([]byte, andSize)
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			dx, dy := x-cx, y-cy
-			if dx*dx+dy*dy > radius2 {
-				byteIdx := y*(w/8) + x/8
-				bitIdx := uint(7 - (x % 8))
-				andMask[byteIdx] |= (1 << bitIdx)
-			}
-		}
+	mask, _, _ := createBitmap.Call(uintptr(w), uintptr(h), 1, 1, 0)
+	if mask == 0 {
+		log.Printf("[tray] createColorIcon: CreateBitmap mask failed")
+		return 0
 	}
+	defer deleteObject.Call(mask)
 
-	headerSize := 6 + 16
-	totalSize := headerSize + len(bih) + len(xor) + len(andMask)
-	ico := make([]byte, totalSize)
-
-	binary.LittleEndian.PutUint16(ico[0:], 0)
-	binary.LittleEndian.PutUint16(ico[2:], 1)
-	binary.LittleEndian.PutUint16(ico[4:], 1)
-
-	off := 6
-	ico[off+0] = byte(w)
-	ico[off+1] = byte(h)
-	ico[off+2] = 0
-	ico[off+3] = 0
-	binary.LittleEndian.PutUint16(ico[off+4:], 1)
-	binary.LittleEndian.PutUint16(ico[off+6:], 32)
-	imgSize := uint32(len(bih) + len(xor) + len(andMask))
-	binary.LittleEndian.PutUint32(ico[off+8:], imgSize)
-	binary.LittleEndian.PutUint32(ico[off+12:], uint32(headerSize))
-
-	copy(ico[headerSize:], bih)
-	copy(ico[headerSize+40:], xor)
-	copy(ico[headerSize+40+xorSize:], andMask)
-
-	return ico
-}
-
-func createColorIcon(r, g, b byte) uintptr {
-	icoData := makeICO(r, g, b)
-	h, _, err := createIconFromResourceEx.Call(
-		uintptr(unsafe.Pointer(&icoData[0])),
-		uintptr(len(icoData)),
-		1,
-		0x00030000,
-		0, 0, 0,
-	)
-	if h == 0 {
-		log.Printf("[tray] createColorIcon(%d,%d,%d) failed (err=%d)", r, g, b, err)
+	ii := ICONINFO{FIcon: 1, HbmMask: mask, HbmColor: hbmp}
+	hicon, _, _ := createIconIndirectProc.Call(uintptr(unsafe.Pointer(&ii)))
+	if hicon == 0 {
+		log.Printf("[tray] createColorIcon: CreateIconIndirect failed")
+		return 0
 	}
-	return h
+	log.Printf("[tray] createColorIcon(%d,%d,%d) = %#x", r, g, b, hicon)
+	return hicon
 }
 
 func destroyIcon(hicon uintptr) {

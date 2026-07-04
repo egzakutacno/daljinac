@@ -42,7 +42,7 @@ var (
 	rtlMoveMemory      = kernel32.NewProc("RtlMoveMemory")
 	getModuleHandleW   = kernel32.NewProc("GetModuleHandleW")
 	getLastError       = kernel32.NewProc("GetLastError")
-	createIconFromResourceEx = user32.NewProc("CreateIconFromResourceEx")
+	createIconIndirectProc   = user32.NewProc("CreateIconIndirect")
 	destroyIconProc          = user32.NewProc("DestroyIcon")
 )
 
