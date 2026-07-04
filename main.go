@@ -31,7 +31,7 @@ func initLog() {
 	}
 }
 
-const version = "2.3.2"
+const version = "2.3.3"
 
 func main() {
 	defer func() {
@@ -145,9 +145,13 @@ func doInstall() {
 	ps := fmt.Sprintf(`
 $action = New-ScheduledTaskAction -Execute '%s'
 $trigger = New-ScheduledTaskTrigger -AtLogon
-$settings = New-ScheduledTaskSettingsSet -DisallowStartIfOnBatteries:$$false -StopIfGoingOnBatteries:$$false
+$settings = New-ScheduledTaskSettingsSet
 $principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
 Register-ScheduledTask -TaskName Daljinac -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+$t = Get-ScheduledTask Daljinac
+$t.Settings.DisallowStartIfOnBatteries = $$false
+$t.Settings.StopIfGoingOnBatteries = $$false
+Set-ScheduledTask $t | Out-Null
 `, exe)
 	exec.Command("powershell", "-NoProfile", "-Command", ps).Run()
 	exec.Command("schtasks", "/run", "/tn", "Daljinac").Run()
