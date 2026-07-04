@@ -31,7 +31,7 @@ func initLog() {
 	}
 }
 
-const version = "2.3.9"
+const version = "2.3.10"
 
 func main() {
 	defer func() {
@@ -74,16 +74,14 @@ func main() {
 	srv := server.New(*tag, version)
 	tr := tray.New(hostname, version)
 	tr.OnUpdate = func() {
-		log.Println("[main] update requested — removing tray icon")
-		tr.RemoveIcon()
-		if err := doUpdate(); err != nil {
+		log.Println("[main] update requested")
+		if err := doUpdate(tr.RemoveIcon); err != nil {
 			log.Printf("Update: %v", err)
 		}
 	}
 	srv.SetOnUpdate(func() {
 		log.Println("[main] update via HTTP API")
-		tr.RemoveIcon()
-		if err := doUpdate(); err != nil {
+		if err := doUpdate(tr.RemoveIcon); err != nil {
 			log.Printf("Update: %v", err)
 		}
 	})
@@ -174,13 +172,14 @@ func doRemove() {
 
 const updateURL = "https://github.com/egzakutacno/daljinac/releases/latest/download/daljinac.exe"
 
-func doUpdate() error {
+func doUpdate(removeIcon func()) error {
 	tmpDir := filepath.Join(os.TempDir(), "daljinac-update")
 	os.MkdirAll(tmpDir, 0755)
 
 	newExe := filepath.Join(tmpDir, "daljinac.exe")
-	log.Printf("Downloading %s", updateURL)
-	resp, err := http.Get(updateURL)
+	exeURL := updateURL
+	log.Printf("Downloading %s", exeURL)
+	resp, err := http.Get(exeURL)
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
 	}
@@ -191,6 +190,10 @@ func doUpdate() error {
 	out, _ := os.Create(newExe)
 	io.Copy(out, resp.Body)
 	out.Close()
+
+	if removeIcon != nil {
+		removeIcon()
+	}
 
 	current, _ := os.Executable()
 
