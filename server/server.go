@@ -57,6 +57,7 @@ type Server struct {
 	start          time.Time
 	status         atomic.Int32
 	onStatusChange func(AgentStatus)
+	onUpdate       func()
 }
 
 func New(tag, version string) *Server {
@@ -82,11 +83,16 @@ func New(tag, version string) *Server {
 	s.mux.HandleFunc("/api/files", s.handleFiles)
 	s.mux.HandleFunc("/api/processes", s.handleProcesses)
 	s.mux.HandleFunc("/api/kill", s.handleKill)
+	s.mux.HandleFunc("/api/update", s.handleUpdate)
 	return s
 }
 
 func (s *Server) SetOnStatusChange(cb func(AgentStatus)) {
 	s.onStatusChange = cb
+}
+
+func (s *Server) SetOnUpdate(cb func()) {
+	s.onUpdate = cb
 }
 
 func (s *Server) setStatus(st AgentStatus) {
@@ -307,6 +313,19 @@ func (s *Server) handleProcesses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResp(w, 200, data)
+}
+
+func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		jsonError(w, 405, "Method not allowed")
+		return
+	}
+	if s.onUpdate == nil {
+		jsonError(w, 500, "No update callback configured")
+		return
+	}
+	jsonResp(w, 202, map[string]string{"status": "update started"})
+	go s.onUpdate()
 }
 
 func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {

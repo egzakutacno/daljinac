@@ -31,7 +31,7 @@ func initLog() {
 	}
 }
 
-const version = "2.3.6"
+const version = "2.3.7"
 
 func main() {
 	defer func() {
@@ -80,6 +80,13 @@ func main() {
 			log.Printf("Update: %v", err)
 		}
 	}
+	srv.SetOnUpdate(func() {
+		log.Println("[main] update via HTTP API")
+		tr.RemoveIcon()
+		if err := doUpdate(); err != nil {
+			log.Printf("Update: %v", err)
+		}
+	})
 
 	tr.OnRestartTunnel = func() {
 		log.Println("[main] restarting zrok tunnel")
