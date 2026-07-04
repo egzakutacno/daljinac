@@ -158,14 +158,22 @@ func (t *Tunnel) ensureEnabled() error {
 		// Delete stale name first (might be owned by a previous environment)
 		t.runZrok("delete", "name", t.shareName)
 		log.Printf("[zrok] creating reserved name '%s'...", t.shareName)
-		out, err := t.runZrok("create", "name", t.shareName)
-		if err != nil {
-			log.Printf("[zrok] create name failed: %s — falling back to ephemeral share", out)
-			t.shareName = ""
-		} else {
-			log.Printf("[zrok] reserved name '%s' created OK", t.shareName)
-			t.hasName = true
+		var lastErr string
+		for retry := 0; retry < 3; retry++ {
+			if retry > 0 {
+				time.Sleep(time.Duration(retry*5) * time.Second)
+			}
+			out, err := t.runZrok("create", "name", t.shareName)
+			if err == nil {
+				log.Printf("[zrok] reserved name '%s' created OK", t.shareName)
+				t.hasName = true
+				return nil
+			}
+			lastErr = out
+			log.Printf("[zrok] create name attempt %d failed, retrying...", retry+1)
 		}
+		log.Printf("[zrok] create name failed after 3 attempts: %s — falling back to ephemeral share", lastErr)
+		t.shareName = ""
 	}
 
 	return nil
