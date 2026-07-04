@@ -242,6 +242,25 @@ func (t *Tunnel) connect() {
 		"--headless",
 	}
 	if t.hasName && t.shareName != "" {
+		// Recreate name before each share to avoid 409 "name already in use" on retry
+		t.runZrok("delete", "name", t.shareName)
+		for retry := 0; retry < 3; retry++ {
+			if retry > 0 {
+				time.Sleep(time.Duration(retry*3) * time.Second)
+			}
+			out, err := t.runZrok("create", "name", t.shareName)
+			if err == nil {
+				break
+			}
+			log.Printf("[zrok] pre-share name creation attempt %d failed: %s", retry+1, strings.TrimSpace(out))
+			if retry == 2 {
+				log.Printf("[zrok] giving up on named share, falling back to ephemeral")
+				t.shareName = ""
+				t.hasName = false
+			}
+		}
+	}
+	if t.hasName && t.shareName != "" {
 		args = append(args, "-n", "public:"+t.shareName)
 		log.Printf("[zrok] starting: zrok2 share public http://127.0.0.1:%d --headless -n public:%s", t.localPort, t.shareName)
 	} else {
