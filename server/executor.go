@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"os/exec"
 	"strings"
+	"syscall"
 	"unicode/utf16"
 )
 
@@ -16,6 +17,7 @@ type ExecResult struct {
 
 func Execute(command string) ExecResult {
 	cmd := exec.Command("cmd", "/C", command)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -37,6 +39,7 @@ func Execute(command string) ExecResult {
 func ExecutePS(command string) ExecResult {
 	encoded := encodePS(command)
 	cmd := exec.Command("powershell", "-EncodedCommand", encoded)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
