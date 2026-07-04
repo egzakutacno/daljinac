@@ -13,7 +13,7 @@ Write-Host "       $((Get-Item $Exe).Length) bytes"
 
 Write-Host "[2/3] Installing scheduled task..."
 schtasks /delete /tn Daljinac /f 2>$null
-schtasks /create /tn Daljinac /tr "`"$Exe`"" /sc ONLOGON /f
+schtasks /create /tn Daljinac /tr "`"$Exe`"" /sc ONLOGON /rl HIGHEST /f
 
 Write-Host "[3/3] Starting agent..."
 schtasks /run /tn Daljinac

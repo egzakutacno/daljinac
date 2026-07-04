@@ -1,10 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -35,6 +31,8 @@ func initLog() {
 	}
 }
 
+const version = "2.3.0"
+
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -44,24 +42,14 @@ func main() {
 		}
 	}()
 	initLog()
+	exec.Command("taskkill", "/f", "/im", "zrok2.exe").Run()
 	exec.Command("taskkill", "/f", "/im", "cloudflared.exe").Run()
 	time.Sleep(200 * time.Millisecond)
 
-	apiKey := flag.String("key", "sk-remctrl-8f3a1b9c", "API key")
 	port := flag.Int("port", 8081, "HTTP port")
 	tag := flag.String("tag", "", "Machine tag")
-	rpiURL := flag.String("rpi-url", "", "Publish tunnel URL to RPi")
 	noTray := flag.Bool("notray", false, "No system tray")
 	flag.Parse()
-
-	if v := os.Getenv("AGENT_KEY"); v != "" {
-		*apiKey = v
-	}
-	if *rpiURL == "" {
-		if v := os.Getenv("RPI_URL"); v != "" {
-			*rpiURL = v
-		}
-	}
 
 	args := flag.Args()
 	if len(args) > 0 && args[0] == "-install" {
@@ -73,7 +61,6 @@ func main() {
 		return
 	}
 
-	// Check if port is available — exit if another instance is running
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
 	if err != nil {
 		log.Printf("Port %d in use — another instance running. Exiting.", *port)
@@ -84,12 +71,20 @@ func main() {
 	shutdown := make(chan struct{})
 	hostname, _ := os.Hostname()
 
-	srv := server.New(*apiKey, *tag)
-	tr := tray.New(hostname)
+	srv := server.New(*tag, version)
+	tr := tray.New(hostname, version)
 	tr.OnUpdate = func() {
+		log.Println("[main] update requested — removing tray icon")
+		tr.RemoveIcon()
 		if err := doUpdate(); err != nil {
 			log.Printf("Update: %v", err)
 		}
+	}
+
+	tr.OnRestartTunnel = func() {
+		log.Println("[main] restarting zrok tunnel")
+		exec.Command("taskkill", "/f", "/im", "zrok2.exe").Run()
+		exec.Command("taskkill", "/f", "/im", "cloudflared.exe").Run()
 	}
 
 	var t *tunnel.Tunnel
@@ -101,37 +96,10 @@ func main() {
 		close(shutdown)
 	}
 
-	seenID := ""
-
-	publish := func(turl string) {
-		if turl == "" {
-			return
-		}
-		rpi := *rpiURL
-		if rpi == "" {
-			rpi = discoverRPiURL()
-		}
-		if rpi == "" {
-			return
-		}
-
-		if seenID == "" {
-			ak := rpiGenKey()
-			mid := rpiMid(hostname)
-			if id := rpiRegister(rpi, mid, ak, hostname); id != "" {
-				seenID = id
-			}
-		}
-		if seenID != "" {
-			rpiPublish(rpi, seenID, turl)
-		}
-	}
-
 	onConnect := func(url string) {
 		srv.SetInfo("daljinac", hostname, url)
 		tr.SetURL(url)
 		tr.SetRunning()
-		publish(url)
 	}
 
 	if !*noTray {
@@ -149,7 +117,7 @@ func main() {
 		}
 	}()
 
-	t = tunnel.New(*port, onConnect)
+	t = tunnel.New(*port, hostname, onConnect)
 	t.Start()
 
 	if *noTray {
@@ -179,7 +147,7 @@ func doInstall() {
 
 	exec.Command("schtasks", "/create",
 		"/tn", name, "/tr", tr,
-		"/sc", "ONLOGON", "/f",
+		"/sc", "ONLOGON", "/rl", "HIGHEST", "/f",
 	).Run()
 	exec.Command("schtasks", "/run", "/tn", name).Run()
 	log.Println("Installed (scheduled task)")
@@ -191,73 +159,7 @@ func doRemove() {
 	log.Println("Removed")
 }
 
-func rpiMid(hostname string) string {
-	h := strings.ToLower(hostname)
-	if len(h) > 15 {
-		h = h[:15]
-	}
-	h = strings.NewReplacer(".", "-", " ", "-", "_", "-").Replace(h)
-	b := make([]byte, 2)
-	rand.Read(b)
-	return fmt.Sprintf("%s-%x", h, b)
-}
-
-func rpiGenKey() string {
-	b := make([]byte, 24)
-	rand.Read(b)
-	return hex.EncodeToString(b)
-}
-
-func rpiRegister(rpi, mid, ak, hostname string) string {
-	b, _ := json.Marshal(map[string]string{
-		"name": hostname, "api_key": ak,
-		"hostname": hostname, "metadata": `{"type":"daljinac"}`,
-	})
-	resp, err := http.Post(strings.TrimRight(rpi, "/")+"/api/v1/agent/register",
-		"application/json", bytes.NewReader(b))
-	if err != nil {
-		log.Printf("register: %v", err)
-		return ""
-	}
-	defer resp.Body.Close()
-	var r struct{ MachineID string `json:"machine_id"` }
-	json.NewDecoder(resp.Body).Decode(&r)
-	if r.MachineID != "" {
-		return r.MachineID
-	}
-	return ""
-}
-
-func rpiPublish(rpi, mid, url string) {
-	b, _ := json.Marshal(map[string]string{"machine_id": mid, "tunnel_url": url})
-	resp, err := http.Post(strings.TrimRight(rpi, "/")+"/api/v1/agent/url",
-		"application/json", bytes.NewReader(b))
-	if err != nil {
-		log.Printf("publish: %v", err)
-		return
-	}
-	resp.Body.Close()
-}
-
-func discoverRPiURL() string {
-	resp, err := http.Get(gistRaw)
-	if err != nil {
-		log.Printf("gist: %v", err)
-		return ""
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	url := strings.TrimSpace(string(b))
-	if url == "" || !strings.HasPrefix(url, "https://") {
-		return ""
-	}
-	return url
-}
-
 const updateURL = "https://github.com/egzakutacno/daljinac/releases/latest/download/daljinac.exe"
-
-const gistAPI = "https://api.github.com/gists/0c3de11a3381ae878b09626b306d04d1"
-const gistRaw = "https://gist.githubusercontent.com/egzakutacno/0c3de11a3381ae878b09626b306d04d1/raw/tunnel-url.txt"
 
 func doUpdate() error {
 	tmpDir := filepath.Join(os.TempDir(), "daljinac-update")
@@ -283,27 +185,41 @@ func doUpdate() error {
 	fullCmd := fmt.Sprintf(`"%s" %s`, current, strings.Join(os.Args[1:], " "))
 	os.WriteFile(argsFile, []byte(fullCmd), 0644)
 
+	logFile := filepath.Join(tmpDir, "update.log")
 	bat := filepath.Join(tmpDir, "up.bat")
 	batch := fmt.Sprintf(`@echo off
+set LOG="%s"
+echo %%date%% %%time%% [update] starting >> %%LOG%%
 set /p CMD=<"%s"
-timeout /t 3 /nobreak > nul
-taskkill /f /im daljinac.exe > nul 2>&1
-copy /y "%s" "%s" > nul 2>&1
-schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /f > nul 2>&1
-schtasks /run /tn Daljinac > nul 2>&1
+echo %%date%% %%time%% [update] copying new binary >> %%LOG%%
+copy /y "%s" "%s" >> %%LOG%% 2>&1
+if %%errorlevel%% neq 0 (
+    echo %%date%% %%time%% [update] COPY FAILED errorlevel=%%errorlevel%% >> %%LOG%%
+    exit /b 1
+)
+echo %%date%% %%time%% [update] copy OK, killing old instance >> %%LOG%%
+taskkill /f /im daljinac.exe >> %%LOG%% 2>&1
+timeout /t 2 /nobreak > nul
+echo %%date%% %%time%% [update] registering scheduled task >> %%LOG%%
+schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /rl HIGHEST /f >> %%LOG%% 2>&1
+schtasks /run /tn Daljinac >> %%LOG%% 2>&1
+echo %%date%% %%time%% [update] done, cleaning up >> %%LOG%%
 del "%s"
 del "%%~f0"
-`, argsFile, newExe, current, argsFile)
+`, logFile, argsFile, newExe, current, argsFile)
 	os.WriteFile(bat, []byte(batch), 0644)
 
-	log.Println("Launching UAC update...")
+	log.Printf("Update batch: %s", bat)
+	log.Printf("Update log: %s", logFile)
+
 	shell32 := syscall.NewLazyDLL("shell32.dll")
 	se := shell32.NewProc("ShellExecuteW")
-	se.Call(0,
+	ret, _, _ := se.Call(0,
 		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("runas"))),
 		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("cmd"))),
 		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("/C \""+bat+"\""))),
 		0, 5)
+	log.Printf("ShellExecuteW ret=%d", ret)
 
 	log.Println("Update launched, exiting")
 	os.Exit(0)

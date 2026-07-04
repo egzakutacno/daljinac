@@ -15,32 +15,33 @@ var (
 	shell32  = syscall.NewLazyDLL("shell32.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 
-	registerClassExW  = user32.NewProc("RegisterClassExW")
-	createWindowExW   = user32.NewProc("CreateWindowExW")
-	defWindowProcW    = user32.NewProc("DefWindowProcW")
-	destroyWindow     = user32.NewProc("DestroyWindow")
-	postQuitMessage   = user32.NewProc("PostQuitMessage")
-	getMessageW       = user32.NewProc("GetMessageW")
-	translateMessage  = user32.NewProc("TranslateMessage")
-	dispatchMessageW  = user32.NewProc("DispatchMessageW")
-	shellNotifyIconW  = shell32.NewProc("Shell_NotifyIconW")
-	loadIconW         = user32.NewProc("LoadIconW")
-	createPopupMenu   = user32.NewProc("CreatePopupMenu")
-	appendMenuW       = user32.NewProc("AppendMenuW")
-	trackPopupMenu    = user32.NewProc("TrackPopupMenu")
-	destroyMenu       = user32.NewProc("DestroyMenu")
+	registerClassExW   = user32.NewProc("RegisterClassExW")
+	createWindowExW    = user32.NewProc("CreateWindowExW")
+	defWindowProcW     = user32.NewProc("DefWindowProcW")
+	destroyWindow      = user32.NewProc("DestroyWindow")
+	postQuitMessage    = user32.NewProc("PostQuitMessage")
+	getMessageW        = user32.NewProc("GetMessageW")
+	translateMessage   = user32.NewProc("TranslateMessage")
+	dispatchMessageW   = user32.NewProc("DispatchMessageW")
+	shellNotifyIconW   = shell32.NewProc("Shell_NotifyIconW")
+	loadIconW          = user32.NewProc("LoadIconW")
+	createPopupMenu    = user32.NewProc("CreatePopupMenu")
+	appendMenuW        = user32.NewProc("AppendMenuW")
+	trackPopupMenu     = user32.NewProc("TrackPopupMenu")
+	destroyMenu        = user32.NewProc("DestroyMenu")
 	setForegroundWindow = user32.NewProc("SetForegroundWindow")
-	getCursorPos      = user32.NewProc("GetCursorPos")
-	postMessageW      = user32.NewProc("PostMessageW")
-	openClipboard     = user32.NewProc("OpenClipboard")
-	emptyClipboard    = user32.NewProc("EmptyClipboard")
-	setClipboardData  = user32.NewProc("SetClipboardData")
-	closeClipboard    = user32.NewProc("CloseClipboard")
-	globalAlloc       = kernel32.NewProc("GlobalAlloc")
-	globalLock        = kernel32.NewProc("GlobalLock")
-	globalUnlock      = kernel32.NewProc("GlobalUnlock")
-	rtlMoveMemory     = kernel32.NewProc("RtlMoveMemory")
-	getModuleHandleW  = kernel32.NewProc("GetModuleHandleW")
+	getCursorPos       = user32.NewProc("GetCursorPos")
+	postMessageW       = user32.NewProc("PostMessageW")
+	openClipboard      = user32.NewProc("OpenClipboard")
+	emptyClipboard     = user32.NewProc("EmptyClipboard")
+	setClipboardData   = user32.NewProc("SetClipboardData")
+	closeClipboard     = user32.NewProc("CloseClipboard")
+	globalAlloc        = kernel32.NewProc("GlobalAlloc")
+	globalLock         = kernel32.NewProc("GlobalLock")
+	globalUnlock       = kernel32.NewProc("GlobalUnlock")
+	rtlMoveMemory      = kernel32.NewProc("RtlMoveMemory")
+	getModuleHandleW   = kernel32.NewProc("GetModuleHandleW")
+	getLastError       = kernel32.NewProc("GetLastError")
 )
 
 const (
@@ -102,17 +103,19 @@ type Tray struct {
 	hwnd     uintptr
 	nid      NOTIFYICONDATAW
 	hostname string
+	version  string
 	url      string
 	running  bool
 	mu       sync.RWMutex
 
-	OnCopyURL func()
-	OnUpdate  func()
-	OnExit    func()
+	OnCopyURL       func()
+	OnUpdate        func()
+	OnRestartTunnel func()
+	OnExit          func()
 }
 
-func New(hostname string) *Tray {
-	return &Tray{hostname: hostname}
+func New(hostname, version string) *Tray {
+	return &Tray{hostname: hostname, version: version}
 }
 
 func (t *Tray) SetURL(u string) {
@@ -158,6 +161,8 @@ func (t *Tray) Run() {
 		log.Println("[tray] skipping: not windows")
 		return
 	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	log.Println("[tray] starting")
 
 	hInstance, _, _ := getModuleHandleW.Call(0)
@@ -175,14 +180,16 @@ func (t *Tray) Run() {
 	}
 	reg, _, _ := registerClassExW.Call(uintptr(unsafe.Pointer(&wc)))
 	if reg == 0 {
-		log.Println("[tray] RegisterClassExW failed")
-	} else {
-		log.Println("[tray] class registered OK")
+		errCode, _, _ := getLastError.Call()
+		log.Printf("[tray] RegisterClassExW failed (err=%d)", errCode)
+		return
 	}
+	log.Println("[tray] class registered OK")
 
-	hwnd, _, _ := createWindowExW.Call(0, uintptr(unsafe.Pointer(className)), 0, 0, 0, 0, 0, 0, 0, hInstance, 0, 0)
+	hwnd, _, _ := createWindowExW.Call(0, uintptr(unsafe.Pointer(className)), 0, 0, 0, 0, 0, 0, 0, 0, hInstance, 0)
 	if hwnd == 0 {
-		log.Println("[tray] CreateWindowExW failed — no tray")
+		errCode, _, _ := getLastError.Call()
+		log.Printf("[tray] CreateWindowExW failed (err=%d)", errCode)
 		return
 	}
 	t.hwnd = hwnd
@@ -197,9 +204,10 @@ func (t *Tray) Run() {
 		HIcon:            hIcon,
 	}
 	t.nid.CbSize = uint32(unsafe.Sizeof(t.nid))
-	copy(t.nid.SzTip[:], syscall.StringToUTF16("Daljinac — "+t.hostname))
+	copy(t.nid.SzTip[:], syscall.StringToUTF16(fmt.Sprintf("Daljinac v%s — %s", t.version, t.hostname)))
 	add, _, _ := shellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&t.nid)))
-	log.Printf("[tray] icon added (ret=%d)", add)
+	errCode, _, _ := getLastError.Call()
+	log.Printf("[tray] icon added (ret=%d, err=%d)", add, errCode)
 
 	var msg struct {
 		HWnd    uintptr
@@ -225,8 +233,17 @@ func (t *Tray) Run() {
 	destroyWindow.Call(hwnd)
 }
 
+func (t *Tray) RemoveIcon() {
+	if t.hwnd != 0 {
+		ret, _, _ := shellNotifyIconW.Call(NIM_DELETE, uintptr(unsafe.Pointer(&t.nid)))
+		log.Printf("[tray] RemoveIcon: NIM_DELETE ret=%d", ret)
+	}
+}
+
 func (t *Tray) Stop() {
-	postQuitMessage.Call(0)
+	if t.hwnd != 0 {
+		postMessageW.Call(t.hwnd, WM_DESTROY, 0, 0)
+	}
 }
 
 func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
@@ -268,19 +285,34 @@ func (t *Tray) showMenu() {
 		return uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(s)))
 	}
 
-	label := "Daljinac — " + t.hostname
 	t.mu.RLock()
 	hasURL := t.url != ""
+	isRunning := t.running
 	t.mu.RUnlock()
 
+	statusStr := "Starting..."
+	if isRunning {
+		if hasURL {
+			statusStr = "Connected"
+		} else {
+			statusStr = "Running"
+		}
+	}
+	label := fmt.Sprintf("Daljinac v%s — %s — %s", t.version, t.hostname, statusStr)
 	appendMenuW.Call(hMenu, MF_DISABLED|MF_GRAYED, 0, ptr(label))
 	appendMenuW.Call(hMenu, MF_SEPARATOR, 0, 0)
 
+	if isRunning {
+		appendMenuW.Call(hMenu, MF_STRING, 1004, ptr("Restart Tunnel"))
+	} else {
+		appendMenuW.Call(hMenu, MF_DISABLED|MF_GRAYED, 1004, ptr("Restart Tunnel"))
+	}
 	if hasURL {
 		appendMenuW.Call(hMenu, MF_STRING, 1001, ptr("Copy URL"))
 	} else {
 		appendMenuW.Call(hMenu, MF_DISABLED|MF_GRAYED, 1001, ptr("Copy URL"))
 	}
+	appendMenuW.Call(hMenu, MF_SEPARATOR, 0, 0)
 	appendMenuW.Call(hMenu, MF_STRING, 1002, ptr("Check for Updates"))
 	appendMenuW.Call(hMenu, MF_SEPARATOR, 0, 0)
 	appendMenuW.Call(hMenu, MF_STRING, 1003, ptr("Exit"))
@@ -317,6 +349,11 @@ func (t *Tray) handleCmd(cmd int) {
 	case 1002:
 		if t.OnUpdate != nil {
 			go t.OnUpdate()
+		}
+	case 1004:
+		if t.OnRestartTunnel != nil {
+			log.Println("[tray] restarting tunnel")
+			go t.OnRestartTunnel()
 		}
 	case 1003:
 		if t.OnExit != nil {

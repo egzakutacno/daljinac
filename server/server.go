@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -48,10 +47,10 @@ type AgentInfo struct {
 	Uptime    int64  `json:"uptime"`
 	Status    string `json:"status"`
 	Tag       string `json:"tag"`
+	Version   string `json:"version"`
 }
 
 type Server struct {
-	apiKey         string
 	mux            *http.ServeMux
 	httpSrv        *http.Server
 	info           *AgentInfo
@@ -60,29 +59,29 @@ type Server struct {
 	onStatusChange func(AgentStatus)
 }
 
-func New(apiKey string, tag string) *Server {
+func New(tag, version string) *Server {
 	hostname, _ := os.Hostname()
 	s := &Server{
-		apiKey: apiKey,
-		start:  time.Now(),
+		start: time.Now(),
 		info: &AgentInfo{
 			Hostname: hostname,
 			Tag:      tag,
+			Version:  version,
 		},
 	}
 	s.status.Store(int32(StatusStopped))
 	s.mux = http.NewServeMux()
 	s.mux.HandleFunc("/", s.handleRoot)
-	s.mux.HandleFunc("/api/execute", s.auth(s.handleExecute))
-	s.mux.HandleFunc("/api/ps", s.auth(s.handlePS))
-	s.mux.HandleFunc("/api/status", s.auth(s.handleStatus))
+	s.mux.HandleFunc("/api/execute", s.handleExecute)
+	s.mux.HandleFunc("/api/ps", s.handlePS)
+	s.mux.HandleFunc("/api/status", s.handleStatus)
 	s.mux.HandleFunc("/api/info", s.handleInfo)
-	s.mux.HandleFunc("/api/download", s.auth(s.handleDownload))
-	s.mux.HandleFunc("/api/upload", s.auth(s.handleUpload))
-	s.mux.HandleFunc("/api/screenshot", s.auth(s.handleScreenshot))
-	s.mux.HandleFunc("/api/files", s.auth(s.handleFiles))
-	s.mux.HandleFunc("/api/processes", s.auth(s.handleProcesses))
-	s.mux.HandleFunc("/api/kill", s.auth(s.handleKill))
+	s.mux.HandleFunc("/api/download", s.handleDownload)
+	s.mux.HandleFunc("/api/upload", s.handleUpload)
+	s.mux.HandleFunc("/api/screenshot", s.handleScreenshot)
+	s.mux.HandleFunc("/api/files", s.handleFiles)
+	s.mux.HandleFunc("/api/processes", s.handleProcesses)
+	s.mux.HandleFunc("/api/kill", s.handleKill)
 	return s
 }
 
@@ -138,15 +137,8 @@ func (s *Server) SetInfo(id, hostname, pinggyURL string) {
 	s.setStatus(StatusRunning)
 }
 
-func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		key := r.Header.Get("X-API-Key")
-		if subtle.ConstantTimeCompare([]byte(key), []byte(s.apiKey)) != 1 {
-			jsonError(w, 401, "Unauthorized")
-			return
-		}
-		next(w, r)
-	}
+func (s *Server) SetVersion(v string) {
+	s.info.Version = v
 }
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
