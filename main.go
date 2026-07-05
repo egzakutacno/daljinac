@@ -31,7 +31,7 @@ func initLog() {
 	}
 }
 
-const version = "2.3.10"
+const version = "2.3.11"
 
 func main() {
 	defer func() {

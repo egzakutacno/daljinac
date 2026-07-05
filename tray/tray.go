@@ -233,13 +233,14 @@ func (t *Tray) Run() {
 
 	t.nid = NOTIFYICONDATAW{
 		HWnd:             hwnd,
-		UID:              1,
+		UID:              uint32(os.Getpid()),
 		UFlags:           NIF_MESSAGE | NIF_ICON | NIF_TIP,
 		UCallbackMessage: WM_APP + 1,
 		HIcon:            t.hIcon(),
 	}
 	t.nid.CbSize = uint32(unsafe.Sizeof(t.nid))
 	copy(t.nid.SzTip[:], syscall.StringToUTF16(fmt.Sprintf("Daljinac v%s — %s", t.version, t.hostname)))
+	shellNotifyIconW.Call(NIM_DELETE, uintptr(unsafe.Pointer(&t.nid)))
 	add, _, _ := shellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&t.nid)))
 	errCode, _, _ := getLastError.Call()
 	log.Printf("[tray] icon added (ret=%d, err=%d)", add, errCode)
