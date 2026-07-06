@@ -31,7 +31,7 @@ func initLog() {
 	}
 }
 
-const version = "2.3.7"
+const version = "2.3.12"
 
 func main() {
 	defer func() {
@@ -107,6 +107,7 @@ func main() {
 		srv.SetInfo("daljinac", hostname, url)
 		tr.SetURL(url)
 		tr.SetRunning()
+		tr.SetStatusIcon(tray.IconConnected)
 	}
 
 	if !*noTray {

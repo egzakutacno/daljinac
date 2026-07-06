@@ -25,6 +25,7 @@ var (
 	dispatchMessageW   = user32.NewProc("DispatchMessageW")
 	shellNotifyIconW   = shell32.NewProc("Shell_NotifyIconW")
 	loadIconW          = user32.NewProc("LoadIconW")
+	loadImageW         = user32.NewProc("LoadImageW")
 	createPopupMenu    = user32.NewProc("CreatePopupMenu")
 	appendMenuW        = user32.NewProc("AppendMenuW")
 	trackPopupMenu     = user32.NewProc("TrackPopupMenu")
@@ -62,6 +63,17 @@ const (
 	CF_UNICODETEXT = 13
 	WM_NULL       = 0
 	IDI_APPLICATION = 32512
+	IDI_ERROR       = 32513
+	IDI_WARNING     = 32515
+	IDI_ASTERISK    = 32516
+	IMAGE_ICON      = 1
+	LR_SHARED       = 0x8000
+)
+
+const (
+	IconDisconnected = 0
+	IconConnecting   = 1
+	IconConnected    = 2
 )
 
 type WNDCLASSEXW struct {
@@ -100,13 +112,14 @@ type NOTIFYICONDATAW struct {
 }
 
 type Tray struct {
-	hwnd     uintptr
-	nid      NOTIFYICONDATAW
-	hostname string
-	version  string
-	url      string
-	running  bool
-	mu       sync.RWMutex
+	hwnd       uintptr
+	nid        NOTIFYICONDATAW
+	hostname   string
+	version    string
+	url        string
+	running    bool
+	statusIcon int
+	mu         sync.RWMutex
 
 	OnCopyURL       func()
 	OnUpdate        func()
@@ -147,13 +160,30 @@ func (t *Tray) updateTip() {
 	shellNotifyIconW.Call(NIM_MODIFY, uintptr(unsafe.Pointer(&t.nid)))
 }
 
-func (t *Tray) hIcon() uintptr {
-	if t.running {
-		h, _, _ := loadIconW.Call(0, uintptr(IDI_APPLICATION))
-		return h
+func iconFromID(id uintptr) uintptr {
+	h, _, _ := loadImageW.Call(0, id, IMAGE_ICON, 16, 16, LR_SHARED)
+	if h == 0 {
+		h, _, _ = loadIconW.Call(0, uintptr(IDI_APPLICATION))
 	}
-	h, _, _ := loadIconW.Call(0, uintptr(32512))
 	return h
+}
+
+func (t *Tray) hIcon() uintptr {
+	switch t.statusIcon {
+	case IconConnected:
+		return iconFromID(IDI_ASTERISK)
+	case IconConnecting:
+		return iconFromID(IDI_WARNING)
+	default:
+		return iconFromID(IDI_ERROR)
+	}
+}
+
+func (t *Tray) SetStatusIcon(status int) {
+	t.mu.Lock()
+	t.statusIcon = status
+	t.mu.Unlock()
+	t.updateTip()
 }
 
 func (t *Tray) Run() {
@@ -164,6 +194,8 @@ func (t *Tray) Run() {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	log.Println("[tray] starting")
+
+	t.statusIcon = IconConnecting
 
 	hInstance, _, _ := getModuleHandleW.Call(0)
 	className := syscall.StringToUTF16Ptr(fmt.Sprintf("DaljinacTray_%d", os.Getpid()))
@@ -195,13 +227,12 @@ func (t *Tray) Run() {
 	t.hwnd = hwnd
 	log.Println("[tray] window created OK")
 
-	hIcon, _, _ := loadIconW.Call(0, uintptr(IDI_APPLICATION))
 	t.nid = NOTIFYICONDATAW{
 		HWnd:             hwnd,
 		UID:              1,
 		UFlags:           NIF_MESSAGE | NIF_ICON | NIF_TIP,
 		UCallbackMessage: WM_APP + 1,
-		HIcon:            hIcon,
+		HIcon:            t.hIcon(),
 	}
 	t.nid.CbSize = uint32(unsafe.Sizeof(t.nid))
 	copy(t.nid.SzTip[:], syscall.StringToUTF16(fmt.Sprintf("Daljinac v%s — %s", t.version, t.hostname)))
