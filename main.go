@@ -31,7 +31,7 @@ func initLog() {
 	}
 }
 
-const version = "2.3.12"
+const version = "2.3.12-notray"
 
 func main() {
 	defer func() {
@@ -151,7 +151,7 @@ func main() {
 func doInstall() {
 	exe, _ := os.Executable()
 	ps := fmt.Sprintf(`
-$action = New-ScheduledTaskAction -Execute '%s'
+$action = New-ScheduledTaskAction -Execute '%s' -Argument '-notray'
 $trigger = New-ScheduledTaskTrigger -AtLogon
 $settings = New-ScheduledTaskSettingsSet
 $principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest

@@ -42,7 +42,9 @@ var (
 	globalUnlock       = kernel32.NewProc("GlobalUnlock")
 	rtlMoveMemory      = kernel32.NewProc("RtlMoveMemory")
 	getModuleHandleW   = kernel32.NewProc("GetModuleHandleW")
-	getLastError       = kernel32.NewProc("GetLastError")
+	getLastError            = kernel32.NewProc("GetLastError")
+	createIconIndirectProc  = user32.NewProc("CreateIconIndirect")
+	destroyIconProc         = user32.NewProc("DestroyIcon")
 )
 
 const (
