@@ -23,12 +23,6 @@ $settings = New-ScheduledTaskSettingsSet
 $principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
 Register-ScheduledTask -TaskName Daljinac -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
 
-# Fix battery settings (param names differ across PS versions)
-$t = Get-ScheduledTask Daljinac
-$t.Settings.DisallowStartIfOnBatteries = $false
-$t.Settings.StopIfGoingOnBatteries = $false
-Set-ScheduledTask $t | Out-Null
-
 Write-Host "[3/3] Starting agent..."
 schtasks /run /tn Daljinac
 
