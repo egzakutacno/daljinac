@@ -31,7 +31,7 @@ func initLog() {
 	}
 }
 
-const version = "2.3.13-notray"
+const version = "2.3.14-notray"
 
 func main() {
 	defer func() {

@@ -137,15 +137,43 @@ func (t *Tunnel) isEnabled() bool {
 func (t *Tunnel) ensureEnabled() error {
 	// Always disable first to clear any old environment (from previous agent versions)
 	log.Printf("[zrok] disabling old environment (if any)...")
-	t.runZrok("disable") // ignore error — might not be enabled yet
+	for i := 0; i < 3; i++ {
+		_, err := t.runZrok("disable")
+		if err == nil {
+			break
+		}
+		if i < 2 {
+			log.Printf("[zrok] disable attempt %d failed, retrying in 5s...", i+1)
+			time.Sleep(5 * time.Second)
+		}
+	}
 
 	log.Printf("[zrok] enabling with token...")
-	out, err := t.runZrok("enable", zrokToken)
-	if err != nil {
-		log.Printf("[zrok] enable output: %s", out)
-		return fmt.Errorf("enable failed: %w", err)
+	var enableOut string
+	var enableErr error
+	for i := 0; i < 3; i++ {
+		out, err := t.runZrok("enable", zrokToken)
+		if err == nil {
+			enableOut = out
+			enableErr = nil
+			break
+		}
+		enableOut = out
+		enableErr = err
+		if strings.Contains(out, "already enabled") {
+			log.Printf("[zrok] enable attempt %d failed (already enabled), retrying disable+enable in 5s...", i+1)
+			t.runZrok("disable")
+			time.Sleep(5 * time.Second)
+		} else if i < 2 {
+			log.Printf("[zrok] enable attempt %d failed, retrying in 5s...", i+1)
+			time.Sleep(5 * time.Second)
+		}
 	}
-	log.Printf("[zrok] enable output: %s", strings.TrimSpace(out))
+	if enableErr != nil {
+		log.Printf("[zrok] enable output: %s", enableOut)
+		return fmt.Errorf("enable failed after 3 attempts: %w", enableErr)
+	}
+	log.Printf("[zrok] enable output: %s", strings.TrimSpace(enableOut))
 
 	// Verify enable worked
 	if !t.isEnabled() {
