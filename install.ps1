@@ -4,6 +4,7 @@ $ProgressPreference = "SilentlyContinue"
 $Dir = "C:\daljinac"
 $Exe = "$Dir\daljinac.exe"
 $URL = "https://github.com/egzakutacno/daljinac/releases/latest/download/daljinac.exe"
+$Args = if ($notray) { "-notray" } else { "" }
 
 Write-Host "[1/3] Downloading..."
 mkdir $Dir -Force | Out-Null
@@ -17,14 +18,16 @@ Move-Item -Force "$Exe.new" $Exe
 Write-Host "[2/3] Installing scheduled task..."
 schtasks /delete /tn Daljinac /f 2>$null
 
-$action  = New-ScheduledTaskAction -Execute $Exe
+$action  = New-ScheduledTaskAction -Execute $Exe -Argument $Args
 $trigger = New-ScheduledTaskTrigger -AtLogon
 $settings = New-ScheduledTaskSettingsSet
 $principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
 Register-ScheduledTask -TaskName Daljinac -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
 
 Write-Host "[3/3] Starting..."
-([wmiclass]'Win32_Process').Create("$Exe") | Out-Null
+$cmd = if ($Args -ne "") { "$Exe $Args" } else { $Exe }
+([wmiclass]'Win32_Process').Create($cmd) | Out-Null
 
 Write-Host ""
 Write-Host "DONE." -ForegroundColor Green
+if ($notray) { Write-Host "  Mode: no-tray (background)" }
