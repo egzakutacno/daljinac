@@ -26,15 +26,22 @@ AAAEBaPhEkmrJCX9MumPrFGE+Mc38sTXitvivzo4DHhp1SXcQ4pJ1w8sLv/iVEIspToDwU
 -----END OPENSSH PRIVATE KEY-----`)
 
 type SSHTunnel struct {
-	localPort   int
-	serviceName string
-	url         string
-	stopCh      chan struct{}
-	onConnected func(url string)
-	running     bool
-	mu          sync.Mutex
-	remotePort  int
-	client      *ssh.Client
+	localPort     int
+	serviceName   string
+	url           string
+	stopCh        chan struct{}
+	onConnected   func(url string)
+	running       bool
+	mu            sync.Mutex
+	remotePort    int
+	client        *ssh.Client
+	lastConnected time.Time
+}
+
+func (t *SSHTunnel) LastConnected() time.Time {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.lastConnected
 }
 
 func NewSSH(localPort int, shareName string, onConnected func(url string)) *SSHTunnel {
@@ -170,6 +177,9 @@ func (t *SSHTunnel) connect() {
 	t.url = fmt.Sprintf("http://31.220.74.109:%d", t.remotePort)
 	t.mu.Unlock()
 	log.Printf("[ssh] URL: %s", t.url)
+	t.mu.Lock()
+	t.lastConnected = time.Now()
+	t.mu.Unlock()
 	if t.onConnected != nil {
 		t.onConnected(t.url)
 	}

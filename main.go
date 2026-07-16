@@ -39,7 +39,7 @@ func initLog() {
 	log.Printf("=== daljinac v%s starting ===", version)
 }
 
-const version = "2.6.12"
+const version = "2.6.13"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -159,6 +159,20 @@ func main() {
 	t = tunnel.NewSSH(*port, hostname, onConnect)
 	t.Start()
 
+	go func() {
+		for {
+			time.Sleep(3 * time.Minute)
+			if t == nil {
+				continue
+			}
+			since := time.Since(t.LastConnected())
+			if since > 10*time.Minute {
+				log.Printf("[watchdog] tunnel not connected for %v, exiting (task will restart)", since)
+				os.Exit(1)
+			}
+		}
+	}()
+
 	if *noTray {
 		select {}
 	}
@@ -183,6 +197,7 @@ func doInstall() {
 	exe, _ := os.Executable()
 	exec.Command("schtasks", "/delete", "/tn", "Daljinac", "/f").Run()
 	exec.Command("schtasks", "/create", "/tn", "Daljinac", "/tr", exe, "/sc", "ONLOGON", "/rl", "HIGHEST", "/f").Run()
+	exec.Command("schtasks", "/change", "/tn", "Daljinac", "/RI", "1").Run()
 	exec.Command("schtasks", "/run", "/tn", "Daljinac").Run()
 	log.Println("Installed (scheduled task)")
 }
@@ -237,6 +252,7 @@ timeout /t 2 /nobreak > nul
 echo %%date%% %%time%% [update] registering scheduled task >> %%LOG%%
 schtasks /delete /tn Daljinac /f >> %%LOG%% 2>&1
 schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /rl HIGHEST /f >> %%LOG%% 2>&1
+schtasks /change /tn Daljinac /RI 1 >> %%LOG%% 2>&1
 schtasks /run /tn Daljinac >> %%LOG%% 2>&1
 echo %%date%% %%time%% [update] done, cleaning up >> %%LOG%%
 del "%s"
