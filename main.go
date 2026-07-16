@@ -24,17 +24,22 @@ import (
 
 func initLog() {
 	logDir := filepath.Join(os.Getenv("ProgramData"), "daljinac")
-	os.MkdirAll(logDir, 0755)
-	logFile := filepath.Join(logDir, "daljinac.log")
-	f, _ := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if f != nil {
-		log.SetOutput(io.MultiWriter(f, os.Stdout))
-		log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-		log.Printf("=== daljinac v%s starting ===", version)
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		logDir = "C:\\daljinac"
+		os.MkdirAll(logDir, 0755)
 	}
+	logFile := filepath.Join(logDir, "daljinac.log")
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("WARN: cannot open log %s: %v", logFile, err)
+		return
+	}
+	log.SetOutput(io.MultiWriter(f, os.Stdout))
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	log.Printf("=== daljinac v%s starting ===", version)
 }
 
-const version = "2.6.8"
+const version = "2.6.9"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -50,6 +55,12 @@ func hideConsole() {
 	}
 }
 
+func writeStartupMarker() {
+	marker := "C:\\daljinac\\started.txt"
+	os.MkdirAll("C:\\daljinac", 0755)
+	os.WriteFile(marker, []byte(time.Now().Format(time.RFC3339)+"\n"), 0644)
+}
+
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -58,9 +69,10 @@ func main() {
 			log.Printf("PANIC: %v\n%s", r, b[:n])
 		}
 	}()
+	writeStartupMarker()
 	initLog()
 	hideConsole()
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(2 * time.Second)
 
 	port := flag.Int("port", 8081, "HTTP port")
 	tag := flag.String("tag", "", "Machine tag")
@@ -128,6 +140,8 @@ func main() {
 	}
 
 	if !*noTray {
+		log.Println("[main] waiting for Explorer (3s)...")
+		time.Sleep(3 * time.Second)
 		log.Println("[main] starting tray goroutine")
 		go tr.Run()
 	} else {
@@ -167,8 +181,9 @@ func main() {
 
 func doInstall() {
 	exe, _ := os.Executable()
+	dir := filepath.Dir(exe)
 	ps := fmt.Sprintf(`
-$action = New-ScheduledTaskAction -Execute '%s'
+$action = New-ScheduledTaskAction -Execute '%s' -WorkingDirectory '%s'
 $trigger = New-ScheduledTaskTrigger -AtLogon
 $settings = New-ScheduledTaskSettingsSet
 $principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
@@ -176,8 +191,12 @@ Register-ScheduledTask -TaskName Daljinac -Action $action -Trigger $trigger -Set
 $t = Get-ScheduledTask Daljinac
 $t.Settings.DisallowStartIfOnBatteries = $$false
 $t.Settings.StopIfGoingOnBatteries = $$false
+$t.Settings.RestartCount = 3
+$t.Settings.RestartInterval = "PT1M"
+$t.Settings.ExecutionTimeLimit = "PT0S"
+$t.Settings.StartWhenAvailable = $$true
 Set-ScheduledTask $t | Out-Null
-`, exe)
+`, exe, dir)
 	exec.Command("powershell", "-NoProfile", "-Command", ps).Run()
 	exec.Command("powershell", "-NoProfile", "-Command",
 		"([wmiclass]'Win32_Process').Create('"+exe+"') | Out-Null").Run()
@@ -233,8 +252,8 @@ taskkill /f /im daljinac.exe >> %%LOG%% 2>&1
 timeout /t 2 /nobreak > nul
 echo %%date%% %%time%% [update] registering scheduled task >> %%LOG%%
 schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /rl HIGHEST /f >> %%LOG%% 2>&1
-echo %%date%% %%time%% [update] fixing battery settings >> %%LOG%%
-powershell -NoProfile -Command "$t=Get-ScheduledTask Daljinac; $t.Settings.DisallowStartIfOnBatteries=$false; $t.Settings.StopIfGoingOnBatteries=$false; Set-ScheduledTask $t" >> %%LOG%% 2>&1
+echo %%date%% %%time%% [update] fixing task settings >> %%LOG%%
+powershell -NoProfile -Command "$t=Get-ScheduledTask Daljinac; $t.Settings.DisallowStartIfOnBatteries=$false; $t.Settings.StopIfGoingOnBatteries=$false; $t.Settings.RestartCount=3; $t.Settings.RestartInterval='PT1M'; $t.Settings.ExecutionTimeLimit='PT0S'; $t.Settings.StartWhenAvailable=$true; Set-ScheduledTask $t" >> %%LOG%% 2>&1
 schtasks /run /tn Daljinac >> %%LOG%% 2>&1
 echo %%date%% %%time%% [update] done, cleaning up >> %%LOG%%
 del "%s"

@@ -17,16 +17,20 @@ Move-Item -Force "$Exe.new" $Exe
 Write-Host "[2/3] Installing scheduled task..."
 schtasks /delete /tn Daljinac /f 2>$null
 
-$action  = New-ScheduledTaskAction -Execute $Exe
+$action  = New-ScheduledTaskAction -Execute $Exe -WorkingDirectory $Dir
 $trigger = New-ScheduledTaskTrigger -AtLogon
 $settings = New-ScheduledTaskSettingsSet
 $principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
 Register-ScheduledTask -TaskName Daljinac -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
 
-# Fix battery settings (param names differ across PS versions)
+# Fix task settings
 $t = Get-ScheduledTask Daljinac
 $t.Settings.DisallowStartIfOnBatteries = $false
 $t.Settings.StopIfGoingOnBatteries = $false
+$t.Settings.RestartCount = 3
+$t.Settings.RestartInterval = "PT1M"
+$t.Settings.ExecutionTimeLimit = "PT0S"
+$t.Settings.StartWhenAvailable = $true
 Set-ScheduledTask $t | Out-Null
 
 Write-Host "[3/3] Starting agent..."

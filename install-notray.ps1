@@ -19,9 +19,16 @@ Move-Item -Force "$Exe.new" $Exe
 Write-Host "[2/3] Installing scheduled task..."
 schtasks /delete /tn Daljinac /f 2>$null
 
-$action  = New-ScheduledTaskAction -Execute $Exe -Argument $Args
+$action  = New-ScheduledTaskAction -Execute $Exe -Argument $Args -WorkingDirectory $Dir
 $trigger = New-ScheduledTaskTrigger -AtLogon
 $settings = New-ScheduledTaskSettingsSet
+$settings.DisallowStartIfOnBatteries = $false
+$settings.StopIfGoingOnBatteries = $false
+$settings.StartWhenAvailable = $true
+$settings.AllowStartIfOnBatteries = $true
+$settings.RestartCount = 3
+$settings.RestartInterval = "PT1M"
+$settings.ExecutionTimeLimit = "PT0S"
 $principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
 Register-ScheduledTask -TaskName Daljinac -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
 

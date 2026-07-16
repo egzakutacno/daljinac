@@ -146,6 +146,9 @@ func (t *Tray) addOrUpdateIcon() bool {
 	add, _, _ := shellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&t.nid)))
 	if add != 0 {
 		t.iconAdded = true
+		t.nid.UVersion = NOTIFYICON_VERSION_4
+		setVer, _, _ := shellNotifyIconW.Call(NIM_SETVERSION, uintptr(unsafe.Pointer(&t.nid)))
+		log.Printf("[tray] NIM_SETVERSION ret=%d", setVer)
 	}
 	return add != 0
 }
@@ -300,7 +303,7 @@ func (t *Tray) Run() {
 	log.Printf("[tray] TaskbarCreated message=0x%x", t.taskbarMsg)
 
 	// Post message to add icon from within message pump
-	t.addRetries = 10
+	t.addRetries = 0
 	postMessageW.Call(hwnd, WM_TRAY_RETRY, 0, 0)
 
 	var msg struct {
@@ -383,19 +386,21 @@ func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr
 		return 0
 	case WM_TRAY_RETRY:
 		ok := t.addOrUpdateIcon()
-		if !ok && t.addRetries > 0 {
-			t.addRetries--
-			time.AfterFunc(2*time.Second, func() {
+		if !ok {
+			t.addRetries++
+			delay := time.Duration(min(2*t.addRetries, 60)) * time.Second
+			log.Printf("[tray] icon add attempt %d failed, retrying in %v", t.addRetries, delay)
+			time.AfterFunc(delay, func() {
 				postMessageW.Call(hwnd, WM_TRAY_RETRY, 0, 0)
 			})
 		} else {
-			log.Printf("[tray] icon added (ok=%v, retries left=%d)", ok, t.addRetries)
+			log.Printf("[tray] icon added (attempts=%d)", t.addRetries)
 		}
 		return 0
 	}
 	if t.taskbarMsg != 0 && msg == t.taskbarMsg {
 		log.Printf("[tray] TaskbarCreated — re-adding icon")
-		t.addRetries = 10
+		t.addRetries = 0
 		ok := t.addOrUpdateIcon()
 		log.Printf("[tray] TaskbarCreated icon re-add: ok=%v", ok)
 		if !ok {
