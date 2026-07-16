@@ -34,7 +34,7 @@ func initLog() {
 	}
 }
 
-const version = "2.6.7"
+const version = "2.6.8"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {

@@ -49,16 +49,20 @@ var (
 )
 
 const (
-	WM_DESTROY    = 2
-	WM_COMMAND    = 0x0111
-	WM_APP        = 0x8000
-	NIM_ADD       = 0
-	NIM_MODIFY    = 1
-	NIM_DELETE    = 2
-	NIM_SETVERSION = 4
-	NIF_MESSAGE   = 1
-	NIF_ICON      = 2
-	NIF_TIP       = 4
+	WM_DESTROY          = 2
+	WM_COMMAND          = 0x0111
+	WM_CONTEXTMENU      = 0x007B
+	WM_APP              = 0x8000
+	NIM_ADD             = 0
+	NIM_MODIFY          = 1
+	NIM_DELETE          = 2
+	NIM_SETVERSION      = 4
+	NOTIFYICON_VERSION  = 3
+	NOTIFYICON_VERSION_4 = 4
+	NIF_MESSAGE         = 1
+	NIF_ICON            = 2
+	NIF_TIP             = 4
+	NIF_GUID            = 0x00000020
 	MF_STRING     = 0
 	MF_SEPARATOR  = 0x0800
 	MF_DISABLED   = 0x0002
@@ -127,6 +131,7 @@ type Tray struct {
 	addRetries   int
 	taskbarMsg   uint32
 	iconAdded    bool
+	msgCount     int
 	mu           sync.RWMutex
 
 	OnCopyURL       func()
@@ -137,6 +142,7 @@ type Tray struct {
 
 func (t *Tray) addOrUpdateIcon() bool {
 	shellNotifyIconW.Call(NIM_DELETE, uintptr(unsafe.Pointer(&t.nid)))
+	t.nid.UFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_GUID
 	add, _, _ := shellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&t.nid)))
 	if add != 0 {
 		t.iconAdded = true
@@ -174,7 +180,7 @@ func (t *Tray) updateTip() {
 	h := t.hIcon()
 	t.mu.RUnlock()
 
-	t.nid.UFlags = NIF_ICON | NIF_TIP
+	t.nid.UFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_GUID
 	t.nid.HIcon = h
 	copy(t.nid.SzTip[:], syscall.StringToUTF16(s))
 	shellNotifyIconW.Call(NIM_MODIFY, uintptr(unsafe.Pointer(&t.nid)))
@@ -279,11 +285,12 @@ func (t *Tray) Run() {
 	t.nid = NOTIFYICONDATAW{
 		HWnd:             hwnd,
 		UID:              1,
-		UFlags:           NIF_MESSAGE | NIF_ICON | NIF_TIP,
+		UFlags:           NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_GUID,
 		UCallbackMessage: WM_APP + 1,
 		HIcon:            t.hIcon(),
+		GuidItem:         syscall.GUID{Data1: 0xADA5AC65, Data2: 0x5456, Data3: 0x4D81, Data4: [8]byte{131, 128, 47, 207, 152, 70, 231, 91}},
 	}
-	t.nid.CbSize = 552 // NOTIFYICONDATAW_V2_SIZE — kompatibilno sa Windows Vista+
+	t.nid.CbSize = uint32(unsafe.Sizeof(NOTIFYICONDATAW{}))
 	copy(t.nid.SzTip[:], syscall.StringToUTF16(fmt.Sprintf("Daljinac v%s — %s", t.version, t.hostname)))
 
 	// Register TaskbarCreated message (broadcast by Explorer on restart)
@@ -334,6 +341,13 @@ func (t *Tray) Stop() {
 }
 
 func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
+	t.mu.Lock()
+	t.msgCount++
+	count := t.msgCount
+	t.mu.Unlock()
+	if count <= 10 {
+		log.Printf("[tray] wndProc msg=0x%x wParam=0x%x lParam=0x%x (#%d)", msg, wParam, lParam, count)
+	}
 	switch msg {
 	case WM_DESTROY:
 		postQuitMessage.Call(0)
@@ -342,10 +356,11 @@ func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr
 		t.handleCmd(int(wParam) & 0xFFFF)
 		return 0
 	case WM_APP + 1:
-		log.Printf("[tray] callback msg=%d lParam=0x%x", msg, lParam)
-		if lParam == 0x0204 {
+		log.Printf("[tray] callback msg=0x%x lParam=0x%x wParam=0x%x", msg, lParam, wParam)
+		switch lParam {
+		case 0x0204:
 			t.showMenu()
-		} else if lParam == 0x0201 {
+		case 0x0201:
 			t.mu.RLock()
 			u := t.url
 			t.mu.RUnlock()
@@ -355,7 +370,16 @@ func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr
 				se.Call(0, uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("open"))),
 					uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(u))), 0, 0, 5)
 			}
+		case 0x007B:
+			log.Printf("[tray] WM_CONTEXTMENU via callback")
+			t.showMenu()
+		default:
+			log.Printf("[tray] callback unhandled lParam=0x%x", lParam)
 		}
+		return 0
+	case WM_CONTEXTMENU:
+		log.Printf("[tray] WM_CONTEXTMENU direct msg=0x%x", msg)
+		t.showMenu()
 		return 0
 	case WM_TRAY_RETRY:
 		ok := t.addOrUpdateIcon()
