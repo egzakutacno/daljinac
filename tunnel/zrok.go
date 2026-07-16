@@ -19,7 +19,7 @@ import (
 const zrokDownloadURL = "https://github.com/openziti/zrok/releases/download/v2.0.4/zrok_2.0.4_windows_amd64.tar.gz"
 const zrokToken = "Cs9sCOs9dEgp"
 
-type Tunnel struct {
+type ZrokTunnel struct {
 	localPort   int
 	shareName   string
 	hasName     bool
@@ -30,7 +30,7 @@ type Tunnel struct {
 	running     bool
 }
 
-func New(localPort int, shareName string, onConnected func(url string)) *Tunnel {
+func NewZrok(localPort int, shareName string, onConnected func(url string)) *ZrokTunnel {
 	// Sanitize hostname to a valid zrok share name with "dalj-" prefix
 	sanitized := strings.ToLower(shareName)
 	sanitized = strings.NewReplacer("_", "-", ".", "-", " ", "-").Replace(sanitized)
@@ -45,7 +45,7 @@ func New(localPort int, shareName string, onConnected func(url string)) *Tunnel 
 		sanitized = "daljinac"
 	}
 	log.Printf("[zrok] share name: '%s' (from hostname: '%s')", sanitized, shareName)
-	return &Tunnel{
+	return &ZrokTunnel{
 		localPort:   localPort,
 		shareName:   sanitized,
 		stopCh:      make(chan struct{}),
@@ -53,7 +53,7 @@ func New(localPort int, shareName string, onConnected func(url string)) *Tunnel 
 	}
 }
 
-func (t *Tunnel) download() error {
+func (t *ZrokTunnel) download() error {
 	tmpDir := filepath.Join(os.TempDir(), "daljinac-zrok")
 	os.MkdirAll(tmpDir, 0755)
 	t.binPath = filepath.Join(tmpDir, "zrok2.exe")
@@ -101,7 +101,7 @@ func (t *Tunnel) download() error {
 	return nil
 }
 
-func (t *Tunnel) runZrok(args ...string) (string, error) {
+func (t *ZrokTunnel) runZrok(args ...string) (string, error) {
 	cmd := exec.Command(t.binPath, args...)
 	if runtime.GOOS == "windows" {
 		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
@@ -115,7 +115,7 @@ func (t *Tunnel) runZrok(args ...string) (string, error) {
 	return outStr, nil
 }
 
-func (t *Tunnel) isEnabled() bool {
+func (t *ZrokTunnel) isEnabled() bool {
 	// Check multiple possible locations for environment.json
 	home := os.Getenv("USERPROFILE")
 	if home == "" {
@@ -134,7 +134,7 @@ func (t *Tunnel) isEnabled() bool {
 	return false
 }
 
-func (t *Tunnel) ensureEnabled() error {
+func (t *ZrokTunnel) ensureEnabled() error {
 	// Enable superNetwork for redundant control connections
 	log.Printf("[zrok] enabling superNetwork mode...")
 	t.runZrok("config", "set", "superNetwork", "true")
@@ -211,14 +211,14 @@ func (t *Tunnel) ensureEnabled() error {
 	return nil
 }
 
-func (t *Tunnel) Start() {
+func (t *ZrokTunnel) Start() {
 	log.Printf("[zrok] Start() called")
 	exec.Command("taskkill", "/f", "/im", "zrok2.exe").Run()
 	exec.Command("taskkill", "/f", "/im", "cloudflared.exe").Run()
 	go t.Run()
 }
 
-func (t *Tunnel) Run() {
+func (t *ZrokTunnel) Run() {
 	defer func() {
 		if r := recover(); r != nil {
 			buf := make([]byte, 4096)
@@ -267,7 +267,7 @@ func (t *Tunnel) Run() {
 	}
 }
 
-func (t *Tunnel) connect() {
+func (t *ZrokTunnel) connect() {
 	args := []string{
 		"share", "public",
 		fmt.Sprintf("http://127.0.0.1:%d", t.localPort),
@@ -374,7 +374,7 @@ func (t *Tunnel) connect() {
 	}
 }
 
-func (t *Tunnel) parseOutput(r io.Reader, urlCh chan<- string) {
+func (t *ZrokTunnel) parseOutput(r io.Reader, urlCh chan<- string) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -410,12 +410,12 @@ func (t *Tunnel) parseOutput(r io.Reader, urlCh chan<- string) {
 	}
 }
 
-func (t *Tunnel) Stop() {
+func (t *ZrokTunnel) Stop() {
 	t.running = false
 	close(t.stopCh)
 }
 
-func (t *Tunnel) heartbeat(url string, dead chan<- struct{}) {
+func (t *ZrokTunnel) heartbeat(url string, dead chan<- struct{}) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	consecutiveFails := 0
 	for {
@@ -444,10 +444,10 @@ func (t *Tunnel) heartbeat(url string, dead chan<- struct{}) {
 	}
 }
 
-func (t *Tunnel) URL() string {
+func (t *ZrokTunnel) URL() string {
 	return t.url
 }
 
-func (t *Tunnel) IsRunning() bool {
+func (t *ZrokTunnel) IsRunning() bool {
 	return t.running
 }

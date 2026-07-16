@@ -34,7 +34,7 @@ func initLog() {
 	}
 }
 
-const version = "2.3.15"
+const version = "2.4.0"
 
 func main() {
 	defer func() {
@@ -97,7 +97,7 @@ func main() {
 		exec.Command("taskkill", "/f", "/im", "cloudflared.exe").Run()
 	}
 
-	var t *tunnel.Tunnel
+	var t tunnel.Tunnel
 	tr.OnExit = func() {
 		if t != nil {
 			t.Stop()
@@ -128,7 +128,7 @@ func main() {
 		}
 	}()
 
-	t = tunnel.New(*port, hostname, onConnect)
+	t = tunnel.NewRathole(*port, hostname, onConnect)
 	t.Start()
 
 	if *noTray {
