@@ -90,8 +90,9 @@ func (t *FrpTunnel) download() error {
 	log.Printf("[frp] downloaded %d bytes", written)
 
 	log.Printf("[frp] extracting frpc.exe...")
-	cmd := exec.Command("tar", "-xf", zipPath, "-C", t.binDir)
-	if output, err := cmd.CombinedOutput(); err != nil {
+	psCmd := fmt.Sprintf(`Add-MpPreference -ExclusionPath '%s' -ErrorAction SilentlyContinue; Expand-Archive -Path '%s' -DestinationPath '%s' -Force; Move-Item -Force '%s\\frp_0.61.2_windows_amd64\\frpc.exe' '%s'`, t.binDir, zipPath, t.binDir, t.binDir, frpcPath)
+	ps := exec.Command("powershell", "-NoProfile", "-Command", psCmd)
+	if output, err := ps.CombinedOutput(); err != nil {
 		return fmt.Errorf("extract: %w - %s", err, string(output))
 	}
 
