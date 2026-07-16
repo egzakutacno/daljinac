@@ -34,7 +34,7 @@ func initLog() {
 	}
 }
 
-const version = "2.5.0"
+const version = "2.6.0"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -60,7 +60,6 @@ func main() {
 	}()
 	initLog()
 	hideConsole()
-	exec.Command("taskkill", "/f", "/im", "frpc.exe").Run()
 	time.Sleep(200 * time.Millisecond)
 
 	port := flag.Int("port", 8081, "HTTP port")
@@ -105,12 +104,14 @@ func main() {
 		}
 	})
 
+	var t tunnel.Tunnel
+
 	tr.OnRestartTunnel = func() {
 		log.Println("[main] restarting tunnel")
-		exec.Command("taskkill", "/f", "/im", "frpc.exe").Run()
+		if t != nil {
+			t.Stop()
+		}
 	}
-
-	var t tunnel.Tunnel
 	tr.OnExit = func() {
 		if t != nil {
 			t.Stop()
@@ -141,7 +142,7 @@ func main() {
 		}
 	}()
 
-	t = tunnel.NewFrp(*port, hostname, onConnect)
+	t = tunnel.NewSSH(*port, hostname, onConnect)
 	t.Start()
 
 	if *noTray {

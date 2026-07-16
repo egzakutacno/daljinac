@@ -11,7 +11,7 @@ Invoke-WebRequest $URL -OutFile "$Exe.new" -UseBasicParsing
 Write-Host "       $((Get-Item "$Exe.new").Length) bytes"
 
 Write-Host "[1b/3] Replacing old binary..."
-Get-Process daljinac, frpc -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process daljinac -ErrorAction SilentlyContinue | Stop-Process -Force
 Move-Item -Force "$Exe.new" $Exe
 
 Write-Host "[2/3] Installing scheduled task..."
