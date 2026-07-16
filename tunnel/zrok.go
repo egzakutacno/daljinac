@@ -135,6 +135,10 @@ func (t *Tunnel) isEnabled() bool {
 }
 
 func (t *Tunnel) ensureEnabled() error {
+	// Enable superNetwork for redundant control connections
+	log.Printf("[zrok] enabling superNetwork mode...")
+	t.runZrok("config", "set", "superNetwork", "true")
+
 	// Always disable first to clear any old environment (from previous agent versions)
 	log.Printf("[zrok] disabling old environment (if any)...")
 	for i := 0; i < 3; i++ {
@@ -351,10 +355,18 @@ func (t *Tunnel) connect() {
 		return
 	}
 
-	// Keep running until stop or zrok exits
+	// Keep running until stop or zrok exits, with heartbeat
+	heartbeatCh := make(chan struct{}, 1)
+	if t.url != "" {
+		go t.heartbeat(t.url, heartbeatCh)
+	}
 	select {
 	case <-done:
 		log.Println("[zrok] share process exited")
+	case <-heartbeatCh:
+		log.Println("[zrok] heartbeat detected dead tunnel, restarting...")
+		cmd.Process.Kill()
+		cmd.Wait()
 	case <-t.stopCh:
 		cmd.Process.Kill()
 		log.Println("[zrok] share process killed")
@@ -400,6 +412,35 @@ func (t *Tunnel) parseOutput(r io.Reader, urlCh chan<- string) {
 func (t *Tunnel) Stop() {
 	t.running = false
 	close(t.stopCh)
+}
+
+func (t *Tunnel) heartbeat(url string, dead chan<- struct{}) {
+	client := &http.Client{Timeout: 15 * time.Second}
+	consecutiveFails := 0
+	for {
+		select {
+		case <-t.stopCh:
+			return
+		case <-time.After(30 * time.Second):
+		}
+
+		resp, err := client.Get(url + "/api/info")
+		if err != nil {
+			consecutiveFails++
+			log.Printf("[zrok] heartbeat %d/%d failed: %v", consecutiveFails, 3, err)
+			if consecutiveFails >= 3 {
+				log.Printf("[zrok] heartbeat failed %d times, tunnel is dead", consecutiveFails)
+				select {
+				case dead <- struct{}{}:
+				default:
+				}
+				return
+			}
+			continue
+		}
+		resp.Body.Close()
+		consecutiveFails = 0
+	}
 }
 
 func (t *Tunnel) URL() string {
