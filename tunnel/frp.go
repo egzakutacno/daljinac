@@ -21,7 +21,7 @@ import (
 const frpClientURL = "https://github.com/fatedier/frp/releases/download/v0.61.2/frp_0.61.2_windows_amd64.zip"
 const frpServerAddr = "31.220.74.109:7000"
 const frpToken = "83kFmP9qR2vL7xN4"
-const registerAddr = "31.220.74.109:7080"
+const registerAddr = "31.220.74.109:2222"
 
 type FrpTunnel struct {
 	localPort   int

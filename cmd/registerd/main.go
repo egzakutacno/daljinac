@@ -115,7 +115,11 @@ func main() {
 	http.HandleFunc("/register", handleRegister)
 	http.HandleFunc("/list", handleList)
 
-	addr := ":7080"
+	port := os.Getenv("REGISTERD_PORT")
+	if port == "" {
+		port = "7080"
+	}
+	addr := ":" + port
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatalf("listen %s: %v", addr, err)
