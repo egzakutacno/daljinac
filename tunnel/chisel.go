@@ -210,8 +210,8 @@ func (t *ChiselTunnel) connect() {
 	binPath := filepath.Join(t.binDir, "chisel.exe")
 	remote := fmt.Sprintf("R:%d:127.0.0.1:%d", t.remotePort, t.localPort)
 
-	log.Printf("[chisel] starting: chisel client --auth ... %s %s", t.serverAddr, remote)
-	cmd := exec.Command(binPath, "client", "--auth", chiselAuth, t.serverAddr, remote)
+	log.Printf("[chisel] starting: chisel client -v --auth ... %s %s", t.serverAddr, remote)
+	cmd := exec.Command(binPath, "client", "-v", "--auth", chiselAuth, t.serverAddr, remote)
 	if runtime.GOOS == "windows" {
 		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	}
