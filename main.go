@@ -34,7 +34,7 @@ func initLog() {
 	}
 }
 
-const version = "2.4.3"
+const version = "2.5.0"
 
 func main() {
 	defer func() {
@@ -45,8 +45,7 @@ func main() {
 		}
 	}()
 	initLog()
-	exec.Command("taskkill", "/f", "/im", "zrok2.exe").Run()
-	exec.Command("taskkill", "/f", "/im", "cloudflared.exe").Run()
+	exec.Command("taskkill", "/f", "/im", "frpc.exe").Run()
 	time.Sleep(200 * time.Millisecond)
 
 	port := flag.Int("port", 8081, "HTTP port")
@@ -92,9 +91,8 @@ func main() {
 	})
 
 	tr.OnRestartTunnel = func() {
-		log.Println("[main] restarting zrok tunnel")
-		exec.Command("taskkill", "/f", "/im", "zrok2.exe").Run()
-		exec.Command("taskkill", "/f", "/im", "cloudflared.exe").Run()
+		log.Println("[main] restarting tunnel")
+		exec.Command("taskkill", "/f", "/im", "frpc.exe").Run()
 	}
 
 	var t tunnel.Tunnel
@@ -128,7 +126,7 @@ func main() {
 		}
 	}()
 
-	t = tunnel.NewChisel(*port, hostname, onConnect)
+	t = tunnel.NewFrp(*port, hostname, onConnect)
 	t.Start()
 
 	if *noTray {

@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -17,8 +18,9 @@ import (
 )
 
 const frpClientURL = "https://github.com/fatedier/frp/releases/download/v0.61.2/frp_0.61.2_windows_amd64.zip"
-const frpServerAddr = "45.32.121.103:7000"
+const frpServerAddr = "31.220.74.109:7000"
 const frpToken = "83kFmP9qR2vL7xN4"
+const registerAddr = "31.220.74.109:7080"
 
 type FrpTunnel struct {
 	localPort   int
@@ -31,6 +33,7 @@ type FrpTunnel struct {
 	mu          sync.Mutex
 	serverIP    string
 	serverPort  int
+	remotePort  int
 }
 
 func NewFrp(localPort int, shareName string, onConnected func(url string)) *FrpTunnel {
@@ -52,13 +55,58 @@ func NewFrp(localPort int, shareName string, onConnected func(url string)) *FrpT
 		serviceName: sanitized,
 		stopCh:      make(chan struct{}),
 		onConnected: onConnected,
-		serverIP:    "45.32.121.103",
+		serverIP:    "31.220.74.109",
 		serverPort:  7000,
+		remotePort:  0,
 	}
 }
 
+func (t *FrpTunnel) portFilePath() string {
+	return filepath.Join(os.Getenv("ProgramData"), "daljinac", "frp-port.txt")
+}
+
+func (t *FrpTunnel) loadPort() int {
+	data, err := os.ReadFile(t.portFilePath())
+	if err != nil {
+		return 0
+	}
+	var port int
+	if _, err := fmt.Sscanf(string(data), "%d", &port); err != nil {
+		return 0
+	}
+	return port
+}
+
+func (t *FrpTunnel) savePort(port int) {
+	dir := filepath.Dir(t.portFilePath())
+	os.MkdirAll(dir, 0755)
+	os.WriteFile(t.portFilePath(), []byte(fmt.Sprintf("%d", port)), 0644)
+}
+
+func (t *FrpTunnel) register() (int, error) {
+	url := fmt.Sprintf("http://%s/register?hostname=%s", registerAddr, t.serviceName)
+	log.Printf("[frp] registering at %s", url)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return 0, fmt.Errorf("register request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("register HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	var result struct {
+		Port int `json:"port"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("register decode: %w", err)
+	}
+	log.Printf("[frp] registered -> port %d", result.Port)
+	return result.Port, nil
+}
+
 func (t *FrpTunnel) download() error {
-	// frp ships as a zip with frpc.exe inside
 	t.binDir = filepath.Join(os.TempDir(), "daljinac-frp")
 	os.MkdirAll(t.binDir, 0755)
 	frpcPath := filepath.Join(t.binDir, "frpc.exe")
@@ -116,7 +164,7 @@ type = "tcp"
 localIP = "127.0.0.1"
 localPort = %d
 remotePort = %d
-`, t.serverIP, t.serverPort, frpToken, t.serviceName, t.localPort, t.getServicePort(t.serviceName))
+`, t.serverIP, t.serverPort, frpToken, t.serviceName, t.localPort, t.remotePort)
 	return os.WriteFile(configPath, []byte(cfg), 0644)
 }
 
@@ -158,7 +206,24 @@ func (t *FrpTunnel) Run() {
 		default:
 		}
 
-		log.Printf("[frp] connecting (delay=%v)...", delay)
+		t.remotePort = t.loadPort()
+		if t.remotePort == 0 {
+			port, err := t.register()
+			if err != nil {
+				log.Printf("[frp] register error: %v (retry in %v)", err, delay)
+				select {
+				case <-t.stopCh:
+					return
+				case <-time.After(delay):
+				}
+				delay = min(delay*2, 60*time.Second)
+				continue
+			}
+			t.remotePort = port
+			t.savePort(port)
+		}
+
+		log.Printf("[frp] connecting (remotePort=%d, delay=%v)...", t.remotePort, delay)
 		t.connect()
 
 		t.mu.Lock()
@@ -189,7 +254,7 @@ func (t *FrpTunnel) connect() {
 	}
 
 	log.Printf("[frp] starting: frpc -c %s (service=%s -> 127.0.0.1:%d, remote port=%d)",
-		configPath, t.serviceName, t.localPort, t.getServicePort(t.serviceName))
+		configPath, t.serviceName, t.localPort, t.remotePort)
 	cmd := exec.Command(frpcPath, "-c", configPath)
 	if runtime.GOOS == "windows" {
 		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
@@ -231,7 +296,7 @@ func (t *FrpTunnel) connect() {
 	}()
 
 	t.mu.Lock()
-	t.url = fmt.Sprintf("http://%s:%d", t.serverIP, t.getServicePort(t.serviceName))
+	t.url = fmt.Sprintf("http://%s:%d", t.serverIP, t.remotePort)
 	t.mu.Unlock()
 	log.Printf("[frp] URL: %s", t.url)
 	if t.onConnected != nil {
@@ -252,20 +317,6 @@ func (t *FrpTunnel) connect() {
 		cmd.Process.Kill()
 		log.Printf("[frp] process killed")
 	}
-}
-
-func (t *FrpTunnel) getServicePort(name string) int {
-	m := map[string]int{
-		"desktop-inj3o0l":   7081,
-		"desktop-s43ukd6":   7082,
-		"usermic-m3sii9l":   7083,
-		"desktop-ba967g1":   7084,
-		"sandokan":          7085,
-	}
-	if p, ok := m[name]; ok {
-		return p
-	}
-	return 7081
 }
 
 func (t *FrpTunnel) Stop() {
