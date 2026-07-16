@@ -15,36 +15,37 @@ var (
 	user32   = syscall.NewLazyDLL("user32.dll")
 	shell32  = syscall.NewLazyDLL("shell32.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
-	registerClassExW    = user32.NewProc("RegisterClassExW")
-	createWindowExW     = user32.NewProc("CreateWindowExW")
-	defWindowProcW      = user32.NewProc("DefWindowProcW")
-	destroyWindow       = user32.NewProc("DestroyWindow")
-	postQuitMessage     = user32.NewProc("PostQuitMessage")
-	getMessageW         = user32.NewProc("GetMessageW")
-	translateMessage    = user32.NewProc("TranslateMessage")
-	dispatchMessageW    = user32.NewProc("DispatchMessageW")
-	shellNotifyIconW    = shell32.NewProc("Shell_NotifyIconW")
-	loadIconW           = user32.NewProc("LoadIconW")
-	loadImageW          = user32.NewProc("LoadImageW")
-	createIcon          = user32.NewProc("CreateIcon")
-	destroyIcon         = user32.NewProc("DestroyIcon")
-	createPopupMenu     = user32.NewProc("CreatePopupMenu")
-	appendMenuW         = user32.NewProc("AppendMenuW")
-	trackPopupMenu      = user32.NewProc("TrackPopupMenu")
-	destroyMenu         = user32.NewProc("DestroyMenu")
-	setForegroundWindow = user32.NewProc("SetForegroundWindow")
-	getCursorPos        = user32.NewProc("GetCursorPos")
-	postMessageW        = user32.NewProc("PostMessageW")
-	openClipboard       = user32.NewProc("OpenClipboard")
-	emptyClipboard      = user32.NewProc("EmptyClipboard")
-	setClipboardData    = user32.NewProc("SetClipboardData")
-	closeClipboard      = user32.NewProc("CloseClipboard")
-	globalAlloc         = kernel32.NewProc("GlobalAlloc")
-	globalLock          = kernel32.NewProc("GlobalLock")
-	globalUnlock        = kernel32.NewProc("GlobalUnlock")
-	rtlMoveMemory       = kernel32.NewProc("RtlMoveMemory")
-	getModuleHandleW    = kernel32.NewProc("GetModuleHandleW")
-	getLastError        = kernel32.NewProc("GetLastError")
+	registerClassExW      = user32.NewProc("RegisterClassExW")
+	createWindowExW       = user32.NewProc("CreateWindowExW")
+	defWindowProcW        = user32.NewProc("DefWindowProcW")
+	destroyWindow         = user32.NewProc("DestroyWindow")
+	postQuitMessage       = user32.NewProc("PostQuitMessage")
+	getMessageW           = user32.NewProc("GetMessageW")
+	translateMessage      = user32.NewProc("TranslateMessage")
+	dispatchMessageW      = user32.NewProc("DispatchMessageW")
+	shellNotifyIconW      = shell32.NewProc("Shell_NotifyIconW")
+	loadIconW             = user32.NewProc("LoadIconW")
+	loadImageW            = user32.NewProc("LoadImageW")
+	createIcon            = user32.NewProc("CreateIcon")
+	destroyIcon           = user32.NewProc("DestroyIcon")
+	createPopupMenu       = user32.NewProc("CreatePopupMenu")
+	appendMenuW           = user32.NewProc("AppendMenuW")
+	trackPopupMenu        = user32.NewProc("TrackPopupMenu")
+	destroyMenu           = user32.NewProc("DestroyMenu")
+	setForegroundWindow   = user32.NewProc("SetForegroundWindow")
+	getCursorPos          = user32.NewProc("GetCursorPos")
+	postMessageW          = user32.NewProc("PostMessageW")
+	openClipboard         = user32.NewProc("OpenClipboard")
+	emptyClipboard        = user32.NewProc("EmptyClipboard")
+	setClipboardData      = user32.NewProc("SetClipboardData")
+	closeClipboard        = user32.NewProc("CloseClipboard")
+	globalAlloc           = kernel32.NewProc("GlobalAlloc")
+	globalLock            = kernel32.NewProc("GlobalLock")
+	globalUnlock          = kernel32.NewProc("GlobalUnlock")
+	rtlMoveMemory         = kernel32.NewProc("RtlMoveMemory")
+	getModuleHandleW      = kernel32.NewProc("GetModuleHandleW")
+	getLastError          = kernel32.NewProc("GetLastError")
+	registerWindowMessageW = user32.NewProc("RegisterWindowMessageW")
 )
 
 const (
@@ -54,6 +55,7 @@ const (
 	NIM_ADD       = 0
 	NIM_MODIFY    = 1
 	NIM_DELETE    = 2
+	NIM_SETVERSION = 4
 	NIF_MESSAGE   = 1
 	NIF_ICON      = 2
 	NIF_TIP       = 4
@@ -115,20 +117,31 @@ type NOTIFYICONDATAW struct {
 }
 
 type Tray struct {
-	hwnd       uintptr
-	nid        NOTIFYICONDATAW
-	hostname   string
-	version    string
-	url        string
-	running    bool
-	statusIcon int
-	addRetries int
-	mu         sync.RWMutex
+	hwnd         uintptr
+	nid          NOTIFYICONDATAW
+	hostname     string
+	version      string
+	url          string
+	running      bool
+	statusIcon   int
+	addRetries   int
+	taskbarMsg   uint32
+	mu           sync.RWMutex
 
 	OnCopyURL       func()
 	OnUpdate        func()
 	OnRestartTunnel func()
 	OnExit          func()
+}
+
+func (t *Tray) addOrUpdateIcon() bool {
+	shellNotifyIconW.Call(NIM_DELETE, uintptr(unsafe.Pointer(&t.nid)))
+	add, _, _ := shellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&t.nid)))
+	if add != 0 {
+		t.nid.UVersion = 4
+		shellNotifyIconW.Call(NIM_SETVERSION, uintptr(unsafe.Pointer(&t.nid)))
+	}
+	return add != 0
 }
 
 func New(hostname, version string) *Tray {
@@ -270,9 +283,15 @@ func (t *Tray) Run() {
 	t.nid.CbSize = 552 // NOTIFYICONDATAW_V2_SIZE — kompatibilno sa Windows Vista+
 	copy(t.nid.SzTip[:], syscall.StringToUTF16(fmt.Sprintf("Daljinac v%s — %s", t.version, t.hostname)))
 
+	// Register TaskbarCreated message (broadcast by Explorer on restart)
+	taskbarName := syscall.StringToUTF16Ptr("TaskbarCreated")
+	taskbarRaw, _, _ := registerWindowMessageW.Call(uintptr(unsafe.Pointer(taskbarName)))
+	t.taskbarMsg = uint32(taskbarRaw)
+	log.Printf("[tray] TaskbarCreated message=0x%x", t.taskbarMsg)
+
 	// Post message to add icon from within message pump
 	t.addRetries = 10
-	postMessageW.Call(hwnd, WM_APP+2, 0, 0)
+	postMessageW.Call(hwnd, WM_TRAY_RETRY, 0, 0)
 
 	var msg struct {
 		HWnd    uintptr
@@ -335,15 +354,21 @@ func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr
 		}
 		return 0
 	case WM_TRAY_RETRY:
-		add, _, _ := shellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&t.nid)))
-		if add == 0 && t.addRetries > 0 {
+		ok := t.addOrUpdateIcon()
+		if !ok && t.addRetries > 0 {
 			t.addRetries--
 			time.AfterFunc(2*time.Second, func() {
 				postMessageW.Call(hwnd, WM_TRAY_RETRY, 0, 0)
 			})
 		} else {
-			log.Printf("[tray] icon added (ret=%d, retries left=%d)", add, t.addRetries)
+			log.Printf("[tray] icon added (ok=%v, retries left=%d)", ok, t.addRetries)
 		}
+		return 0
+	}
+	if t.taskbarMsg != 0 && msg == t.taskbarMsg {
+		log.Printf("[tray] TaskbarCreated — re-adding icon")
+		t.addRetries = 10
+		t.addOrUpdateIcon()
 		return 0
 	}
 	ret, _, _ := defWindowProcW.Call(hwnd, uintptr(msg), wParam, lParam)
