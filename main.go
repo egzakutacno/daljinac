@@ -23,15 +23,18 @@ import (
 )
 
 func initLog() {
-	logFile := filepath.Join(os.TempDir(), "daljinac.log")
+	logDir := filepath.Join(os.Getenv("ProgramData"), "daljinac")
+	os.MkdirAll(logDir, 0755)
+	logFile := filepath.Join(logDir, "daljinac.log")
 	f, _ := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if f != nil {
 		log.SetOutput(io.MultiWriter(f, os.Stdout))
 		log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+		log.Printf("=== daljinac v%s starting ===", version)
 	}
 }
 
-const version = "2.3.13"
+const version = "2.3.14"
 
 func main() {
 	defer func() {
