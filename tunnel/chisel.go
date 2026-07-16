@@ -17,7 +17,7 @@ import (
 )
 
 const chiselDownloadURL = "https://github.com/jpillora/chisel/releases/download/v1.11.8/chisel_1.11.8_windows_amd64.zip"
-const chiselServerAddr = "45.32.121.103:2222"
+const chiselServerAddr = "100.85.244.80:2222"
 const chiselAuth = "sekret:83kFmP9qR2vL7xN4"
 
 type ChiselTunnel struct {
