@@ -19,9 +19,9 @@ import (
 )
 
 const frpClientURL = "https://github.com/fatedier/frp/releases/download/v0.61.2/frp_0.61.2_windows_amd64.zip"
-const frpServerAddr = "31.220.74.109:7000"
+const frpServerAddr = "31.220.74.109:2222"
 const frpToken = "83kFmP9qR2vL7xN4"
-const registerAddr = "31.220.74.109:2222"
+const registerAddr = "31.220.74.109:8080"
 
 type FrpTunnel struct {
 	localPort   int
@@ -57,7 +57,7 @@ func NewFrp(localPort int, shareName string, onConnected func(url string)) *FrpT
 		stopCh:      make(chan struct{}),
 		onConnected: onConnected,
 		serverIP:    "31.220.74.109",
-		serverPort:  7000,
+		serverPort:  2222,
 		remotePort:  0,
 	}
 }
