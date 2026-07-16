@@ -76,6 +76,7 @@ const (
 	IconDisconnected = 0
 	IconConnecting   = 1
 	IconConnected    = 2
+	WM_TRAY_RETRY    = WM_APP + 2
 )
 
 type WNDCLASSEXW struct {
@@ -121,6 +122,7 @@ type Tray struct {
 	url        string
 	running    bool
 	statusIcon int
+	addRetries int
 	mu         sync.RWMutex
 
 	OnCopyURL       func()
@@ -268,31 +270,9 @@ func (t *Tray) Run() {
 	t.nid.CbSize = uint32(unsafe.Sizeof(t.nid))
 	copy(t.nid.SzTip[:], syscall.StringToUTF16(fmt.Sprintf("Daljinac v%s — %s", t.version, t.hostname)))
 
-	// Ensure message queue exists before NIM_ADD (required on some Windows versions)
-	var peekMsg struct {
-		HWnd    uintptr
-		Message uint32
-		WParam  uintptr
-		LParam  uintptr
-		Time    uint32
-		PtX     int32
-		PtY     int32
-	}
-	user32.NewProc("PeekMessageW").Call(uintptr(unsafe.Pointer(&peekMsg)), 0, 0, 0, 1)
-
-	var add uintptr
-	for attempt := 0; attempt < 10; attempt++ {
-		add, _, _ = shellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&t.nid)))
-		if add != 0 {
-			break
-		}
-		if attempt == 0 {
-			log.Printf("[tray] icon add failed, retrying...")
-		}
-		time.Sleep(time.Duration(attempt+1) * 2 * time.Second)
-	}
-	errCode, _, _ := getLastError.Call()
-	log.Printf("[tray] icon added (ret=%d, err=%d)", add, errCode)
+	// Post message to add icon from within message pump
+	t.addRetries = 10
+	postMessageW.Call(hwnd, WM_APP+2, 0, 0)
 
 	var msg struct {
 		HWnd    uintptr
@@ -352,6 +332,17 @@ func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr
 				se.Call(0, uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("open"))),
 					uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(u))), 0, 0, 5)
 			}
+		}
+		return 0
+	case WM_TRAY_RETRY:
+		add, _, _ := shellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&t.nid)))
+		if add == 0 && t.addRetries > 0 {
+			t.addRetries--
+			time.AfterFunc(2*time.Second, func() {
+				postMessageW.Call(hwnd, WM_TRAY_RETRY, 0, 0)
+			})
+		} else {
+			log.Printf("[tray] icon added (ret=%d, retries left=%d)", add, t.addRetries)
 		}
 		return 0
 	}
