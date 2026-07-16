@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"archive/zip"
 	"bytes"
 	"fmt"
 	"io"
@@ -102,10 +103,35 @@ func (t *ChiselTunnel) download() error {
 	log.Printf("[chisel] downloaded %d bytes", written)
 
 	log.Printf("[chisel] extracting chisel.exe...")
-	psCmd := fmt.Sprintf(`Add-MpPreference -ExclusionPath '%s' -ErrorAction SilentlyContinue; Expand-Archive -Path '%s' -DestinationPath '%s' -Force`, t.binDir, zipPath, t.binDir)
-	ps := exec.Command("powershell", "-NoProfile", "-Command", psCmd)
-	if output, err := ps.CombinedOutput(); err != nil {
-		return fmt.Errorf("extract: %w - %s", err, string(output))
+	zipReader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return fmt.Errorf("open zip: %w", err)
+	}
+	defer zipReader.Close()
+	extracted := false
+	for _, f := range zipReader.File {
+		if strings.EqualFold(f.Name, "chisel.exe") {
+			rc, err := f.Open()
+			if err != nil {
+				return fmt.Errorf("open %s in zip: %w", f.Name, err)
+			}
+			outFile, err := os.Create(binPath)
+			if err != nil {
+				rc.Close()
+				return fmt.Errorf("create %s: %w", binPath, err)
+			}
+			_, err = io.Copy(outFile, rc)
+			rc.Close()
+			outFile.Close()
+			if err != nil {
+				return fmt.Errorf("extract %s: %w", f.Name, err)
+			}
+			extracted = true
+			break
+		}
+	}
+	if !extracted {
+		return fmt.Errorf("chisel.exe not found in zip")
 	}
 
 	os.Remove(binPath + ":Zone.Identifier")
