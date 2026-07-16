@@ -39,7 +39,7 @@ func initLog() {
 	log.Printf("=== daljinac v%s starting ===", version)
 }
 
-const version = "2.6.14"
+const version = "2.6.15"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {

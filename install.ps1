@@ -22,10 +22,7 @@ schtasks /delete /tn Daljinac /f 2>$null
 schtasks /create /tn Daljinac /tr "`"$Exe`" $ExtraArgs" /sc ONLOGON /rl HIGHEST /f 2>$null
 schtasks /change /tn Daljinac /RI 1 2>$null
 
-Write-Host "[2b/3] Setting restart-on-failure..."
-powershell -NoProfile -Command "try{`$t=Get-ScheduledTask Daljinac;`$t.Settings.RestartCount=3;`$t.Settings.RestartInterval='PT1M';`$t.Settings.ExecutionTimeLimit='PT0S';`$t.Settings.AllowStartIfOnBatteries=`$true;`$t.Settings.DisallowStartIfOnBatteries=`$false;`$t.Settings.StopIfGoingOnBatteries=`$false;`$t.Settings.StartWhenAvailable=`$true;Set-ScheduledTask `$t -ErrorAction Stop}catch{}"
-
-Write-Host "[2c/3] Adding startup folder shortcut..."
+Write-Host "[2b/3] Adding startup folder shortcut..."
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Daljinac.lnk")
 $Shortcut.TargetPath = $Exe
