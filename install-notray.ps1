@@ -19,15 +19,12 @@ Move-Item -Force "$Exe.new" $Exe
 
 Write-Host "[2/3] Installing scheduled task..."
 schtasks /delete /tn Daljinac /f 2>$null
-schtasks /create /tn Daljinac /tr "`"$Exe`" $ExtraArgs" /sc ONLOGON /rl HIGHEST /f 2>$null
 
-Write-Host "[2b/3] Adding startup folder shortcut..."
-$WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Daljinac.lnk")
-$Shortcut.TargetPath = $Exe
-$Shortcut.Arguments = $ExtraArgs
-$Shortcut.WorkingDirectory = $Dir
-$Shortcut.Save()
+$action  = New-ScheduledTaskAction -Execute $Exe -Argument $ExtraArgs
+$trigger = New-ScheduledTaskTrigger -AtLogon
+$settings = New-ScheduledTaskSettingsSet
+$principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
+Register-ScheduledTask -TaskName Daljinac -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
 
 Write-Host "[3/3] Starting..."
 ([wmiclass]'Win32_Process').Create("$Exe $ExtraArgs") | Out-Null
@@ -35,4 +32,3 @@ Write-Host "[3/3] Starting..."
 Write-Host ""
 Write-Host "DONE." -ForegroundColor Green
 Write-Host "  Mode: no-tray (background)"
-Write-Host "  Startup: scheduled task + startup folder"
