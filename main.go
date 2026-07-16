@@ -39,7 +39,7 @@ func initLog() {
 	log.Printf("=== daljinac v%s starting ===", version)
 }
 
-const version = "2.6.13"
+const version = "2.6.14"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -269,7 +269,7 @@ del "%%~f0"
 		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("runas"))),
 		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("cmd"))),
 		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("/C \""+bat+"\""))),
-		0, 5)
+		0, 0) // SW_HIDE — ne pokazuj CMD prozor korisniku
 	log.Printf("ShellExecuteW ret=%d", ret)
 
 	log.Println("Update launched, exiting")
