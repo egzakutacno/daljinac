@@ -39,7 +39,7 @@ func initLog() {
 	log.Printf("=== daljinac v%s starting ===", version)
 }
 
-const version = "2.6.9"
+const version = "2.6.10"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -182,24 +182,36 @@ func main() {
 func doInstall() {
 	exe, _ := os.Executable()
 	dir := filepath.Dir(exe)
-	ps := fmt.Sprintf(`
-$action = New-ScheduledTaskAction -Execute '%s' -WorkingDirectory '%s'
-$trigger = New-ScheduledTaskTrigger -AtLogon
-$settings = New-ScheduledTaskSettingsSet
-$principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
-Register-ScheduledTask -TaskName Daljinac -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
-$t = Get-ScheduledTask Daljinac
-$t.Settings.DisallowStartIfOnBatteries = $$false
-$t.Settings.StopIfGoingOnBatteries = $$false
-$t.Settings.RestartCount = 3
-$t.Settings.RestartInterval = "PT1M"
-$t.Settings.ExecutionTimeLimit = "PT0S"
-$t.Settings.StartWhenAvailable = $$true
-Set-ScheduledTask $t | Out-Null
-`, exe, dir)
-	exec.Command("powershell", "-NoProfile", "-Command", ps).Run()
-	exec.Command("powershell", "-NoProfile", "-Command",
-		"([wmiclass]'Win32_Process').Create('"+exe+"') | Out-Null").Run()
+	taskXml := filepath.Join(dir, "task.xml")
+	xml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo><Author>daljinac</Author></RegistrationInfo>
+  <Triggers>
+    <LogonTrigger><Enabled>true</Enabled><Delay>PT10S</Delay></LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author"><RunLevel>HighestAvailable</RunLevel></Principal>
+  </Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowStartIfOnBatteries>true</AllowStartIfOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RestartOnFailure><Interval>PT1M</Interval><Count>3</Count></RestartOnFailure>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>%s</Command>
+      <WorkingDirectory>%s</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>`, exe, dir)
+	os.WriteFile(taskXml, []byte(xml), 0644)
+	exec.Command("schtasks", "/create", "/tn", "Daljinac", "/xml", taskXml, "/f").Run()
+	os.Remove(taskXml)
+	exec.Command("schtasks", "/run", "/tn", "Daljinac").Run()
 	log.Println("Installed (scheduled task)")
 }
 
@@ -237,6 +249,32 @@ func doUpdate() error {
 
 	logFile := filepath.Join(tmpDir, "update.log")
 	bat := filepath.Join(tmpDir, "up.bat")
+	taskXml := filepath.Join(tmpDir, "task.xml")
+	os.WriteFile(taskXml, []byte(fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo><Author>daljinac</Author></RegistrationInfo>
+  <Triggers>
+    <LogonTrigger><Enabled>true</Enabled><Delay>PT10S</Delay></LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author"><RunLevel>HighestAvailable</RunLevel></Principal>
+  </Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowStartIfOnBatteries>true</AllowStartIfOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RestartOnFailure><Interval>PT1M</Interval><Count>3</Count></RestartOnFailure>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>%s</Command>
+      <WorkingDirectory>%s</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>`, current, filepath.Dir(current))), 0644)
 	batch := fmt.Sprintf(`@echo off
 set LOG="%s"
 echo %%date%% %%time%% [update] starting >> %%LOG%%
@@ -251,14 +289,12 @@ echo %%date%% %%time%% [update] copy OK, killing old instance >> %%LOG%%
 taskkill /f /im daljinac.exe >> %%LOG%% 2>&1
 timeout /t 2 /nobreak > nul
 echo %%date%% %%time%% [update] registering scheduled task >> %%LOG%%
-schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /rl HIGHEST /f >> %%LOG%% 2>&1
-echo %%date%% %%time%% [update] fixing task settings >> %%LOG%%
-powershell -NoProfile -Command "$t=Get-ScheduledTask Daljinac; $t.Settings.DisallowStartIfOnBatteries=$false; $t.Settings.StopIfGoingOnBatteries=$false; $t.Settings.RestartCount=3; $t.Settings.RestartInterval='PT1M'; $t.Settings.ExecutionTimeLimit='PT0S'; $t.Settings.StartWhenAvailable=$true; Set-ScheduledTask $t" >> %%LOG%% 2>&1
+schtasks /create /tn Daljinac /xml "%s" /f >> %%LOG%% 2>&1
 schtasks /run /tn Daljinac >> %%LOG%% 2>&1
 echo %%date%% %%time%% [update] done, cleaning up >> %%LOG%%
 del "%s"
 del "%%~f0"
-`, logFile, argsFile, newExe, current, argsFile)
+`, logFile, argsFile, newExe, current, taskXml, taskXml)
 	os.WriteFile(bat, []byte(batch), 0644)
 
 	log.Printf("Update batch: %s", bat)

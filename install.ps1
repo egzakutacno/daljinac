@@ -18,18 +18,50 @@ Move-Item -Force "$Exe.new" $Exe
 Write-Host "[2/3] Installing scheduled task..."
 schtasks /delete /tn Daljinac /f 2>$null
 
-$action  = New-ScheduledTaskAction -Execute $Exe -Argument $Args -WorkingDirectory $Dir
-$trigger = New-ScheduledTaskTrigger -AtLogon
-$settings = New-ScheduledTaskSettingsSet
-$settings.DisallowStartIfOnBatteries = $false
-$settings.StopIfGoingOnBatteries = $false
-$settings.StartWhenAvailable = $true
-$settings.AllowStartIfOnBatteries = $true
-$settings.RestartCount = 3
-$settings.RestartInterval = "PT1M"
-$settings.ExecutionTimeLimit = "PT0S"
-$principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
-Register-ScheduledTask -TaskName Daljinac -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+$xml = @"
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Author>daljinac</Author>
+    <Description>Daljinac remote agent</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT10S</Delay>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowStartIfOnBatteries>true</AllowStartIfOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>3</Count>
+    </RestartOnFailure>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>$Exe</Command>
+      <Arguments>$Args</Arguments>
+      <WorkingDirectory>$Dir</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+"@
+
+$taskXml = "$Dir\task.xml"
+[System.IO.File]::WriteAllText($taskXml, $xml, [System.Text.Encoding]::Unicode)
+schtasks /create /tn Daljinac /xml "$taskXml" /f
+Remove-Item $taskXml -Force
 
 Write-Host "[3/3] Starting..."
 $cmd = if ($Args -ne "") { "$Exe $Args" } else { $Exe }
