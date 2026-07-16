@@ -14,35 +14,36 @@ var (
 	user32   = syscall.NewLazyDLL("user32.dll")
 	shell32  = syscall.NewLazyDLL("shell32.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
-
-	registerClassExW   = user32.NewProc("RegisterClassExW")
-	createWindowExW    = user32.NewProc("CreateWindowExW")
-	defWindowProcW     = user32.NewProc("DefWindowProcW")
-	destroyWindow      = user32.NewProc("DestroyWindow")
-	postQuitMessage    = user32.NewProc("PostQuitMessage")
-	getMessageW        = user32.NewProc("GetMessageW")
-	translateMessage   = user32.NewProc("TranslateMessage")
-	dispatchMessageW   = user32.NewProc("DispatchMessageW")
-	shellNotifyIconW   = shell32.NewProc("Shell_NotifyIconW")
-	loadIconW          = user32.NewProc("LoadIconW")
-	loadImageW         = user32.NewProc("LoadImageW")
-	createPopupMenu    = user32.NewProc("CreatePopupMenu")
-	appendMenuW        = user32.NewProc("AppendMenuW")
-	trackPopupMenu     = user32.NewProc("TrackPopupMenu")
-	destroyMenu        = user32.NewProc("DestroyMenu")
+	registerClassExW    = user32.NewProc("RegisterClassExW")
+	createWindowExW     = user32.NewProc("CreateWindowExW")
+	defWindowProcW      = user32.NewProc("DefWindowProcW")
+	destroyWindow       = user32.NewProc("DestroyWindow")
+	postQuitMessage     = user32.NewProc("PostQuitMessage")
+	getMessageW         = user32.NewProc("GetMessageW")
+	translateMessage    = user32.NewProc("TranslateMessage")
+	dispatchMessageW    = user32.NewProc("DispatchMessageW")
+	shellNotifyIconW    = shell32.NewProc("Shell_NotifyIconW")
+	loadIconW           = user32.NewProc("LoadIconW")
+	loadImageW          = user32.NewProc("LoadImageW")
+	createIcon          = user32.NewProc("CreateIcon")
+	destroyIcon         = user32.NewProc("DestroyIcon")
+	createPopupMenu     = user32.NewProc("CreatePopupMenu")
+	appendMenuW         = user32.NewProc("AppendMenuW")
+	trackPopupMenu      = user32.NewProc("TrackPopupMenu")
+	destroyMenu         = user32.NewProc("DestroyMenu")
 	setForegroundWindow = user32.NewProc("SetForegroundWindow")
-	getCursorPos       = user32.NewProc("GetCursorPos")
-	postMessageW       = user32.NewProc("PostMessageW")
-	openClipboard      = user32.NewProc("OpenClipboard")
-	emptyClipboard     = user32.NewProc("EmptyClipboard")
-	setClipboardData   = user32.NewProc("SetClipboardData")
-	closeClipboard     = user32.NewProc("CloseClipboard")
-	globalAlloc        = kernel32.NewProc("GlobalAlloc")
-	globalLock         = kernel32.NewProc("GlobalLock")
-	globalUnlock       = kernel32.NewProc("GlobalUnlock")
-	rtlMoveMemory      = kernel32.NewProc("RtlMoveMemory")
-	getModuleHandleW   = kernel32.NewProc("GetModuleHandleW")
-	getLastError       = kernel32.NewProc("GetLastError")
+	getCursorPos        = user32.NewProc("GetCursorPos")
+	postMessageW        = user32.NewProc("PostMessageW")
+	openClipboard       = user32.NewProc("OpenClipboard")
+	emptyClipboard      = user32.NewProc("EmptyClipboard")
+	setClipboardData    = user32.NewProc("SetClipboardData")
+	closeClipboard      = user32.NewProc("CloseClipboard")
+	globalAlloc         = kernel32.NewProc("GlobalAlloc")
+	globalLock          = kernel32.NewProc("GlobalLock")
+	globalUnlock        = kernel32.NewProc("GlobalUnlock")
+	rtlMoveMemory       = kernel32.NewProc("RtlMoveMemory")
+	getModuleHandleW    = kernel32.NewProc("GetModuleHandleW")
+	getLastError        = kernel32.NewProc("GetLastError")
 )
 
 const (
@@ -160,10 +161,39 @@ func (t *Tray) updateTip() {
 	shellNotifyIconW.Call(NIM_MODIFY, uintptr(unsafe.Pointer(&t.nid)))
 }
 
+func makeSolidIcon() uintptr {
+	// 16x16 monochrome icon: 1 plane, 1 bit per pixel
+	// AND mask: 0 = opaque, 1 = transparent
+	// XOR mask: 0 = white/screen, 1 = black/inverted
+	andSize := 16 * 16 / 8
+	xorSize := 16 * 16 / 8
+	andMask := make([]byte, andSize)
+	xorMask := make([]byte, xorSize)
+
+	// Draw a simple filled square with border
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			if x >= 2 && x < 14 && y >= 2 && y < 14 {
+				// Visible pixel: AND=0, XOR=1 (black on white)
+				bit := uint(y*16 + x)
+				xorMask[bit/8] |= 1 << (bit % 8)
+			}
+		}
+	}
+
+	h, _, _ := createIcon.Call(0, 16, 16, 1, 1,
+		uintptr(unsafe.Pointer(&andMask[0])),
+		uintptr(unsafe.Pointer(&xorMask[0])))
+	return h
+}
+
 func iconFromID(id uintptr) uintptr {
 	h, _, _ := loadImageW.Call(0, id, IMAGE_ICON, 16, 16, LR_SHARED)
 	if h == 0 {
 		h, _, _ = loadIconW.Call(0, uintptr(IDI_APPLICATION))
+	}
+	if h == 0 {
+		h = makeSolidIcon()
 	}
 	return h
 }
