@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -266,7 +267,30 @@ func (t *Tray) Run() {
 	}
 	t.nid.CbSize = uint32(unsafe.Sizeof(t.nid))
 	copy(t.nid.SzTip[:], syscall.StringToUTF16(fmt.Sprintf("Daljinac v%s — %s", t.version, t.hostname)))
-	add, _, _ := shellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&t.nid)))
+
+	// Ensure message queue exists before NIM_ADD (required on some Windows versions)
+	var peekMsg struct {
+		HWnd    uintptr
+		Message uint32
+		WParam  uintptr
+		LParam  uintptr
+		Time    uint32
+		PtX     int32
+		PtY     int32
+	}
+	user32.NewProc("PeekMessageW").Call(uintptr(unsafe.Pointer(&peekMsg)), 0, 0, 0, 1)
+
+	var add uintptr
+	for attempt := 0; attempt < 10; attempt++ {
+		add, _, _ = shellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&t.nid)))
+		if add != 0 {
+			break
+		}
+		if attempt == 0 {
+			log.Printf("[tray] icon add failed, retrying...")
+		}
+		time.Sleep(time.Duration(attempt+1) * 2 * time.Second)
+	}
 	errCode, _, _ := getLastError.Call()
 	log.Printf("[tray] icon added (ret=%d, err=%d)", add, errCode)
 
