@@ -24,7 +24,7 @@ $principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive 
 Register-ScheduledTask -TaskName Daljinac -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
 
 Write-Host "[3/3] Starting..."
-schtasks /run /tn Daljinac
+([wmiclass]'Win32_Process').Create("$Exe") | Out-Null
 
 Write-Host ""
 Write-Host "DONE." -ForegroundColor Green

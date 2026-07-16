@@ -178,7 +178,8 @@ $t.Settings.StopIfGoingOnBatteries = $$false
 Set-ScheduledTask $t | Out-Null
 `, exe)
 	exec.Command("powershell", "-NoProfile", "-Command", ps).Run()
-	exec.Command("schtasks", "/run", "/tn", "Daljinac").Run()
+	exec.Command("powershell", "-NoProfile", "-Command",
+		"([wmiclass]'Win32_Process').Create('"+exe+"') | Out-Null").Run()
 	log.Println("Installed (scheduled task)")
 }
 
