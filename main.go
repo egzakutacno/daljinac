@@ -36,6 +36,20 @@ func initLog() {
 
 const version = "2.5.0"
 
+func hideConsole() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	getConsoleWindow := kernel32.NewProc("GetConsoleWindow")
+	user32 := syscall.NewLazyDLL("user32.dll")
+	showWindow := user32.NewProc("ShowWindow")
+	hwnd, _, _ := getConsoleWindow.Call()
+	if hwnd != 0 {
+		showWindow.Call(hwnd, 0) // SW_HIDE = 0
+	}
+}
+
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -45,6 +59,7 @@ func main() {
 		}
 	}()
 	initLog()
+	hideConsole()
 	exec.Command("taskkill", "/f", "/im", "frpc.exe").Run()
 	time.Sleep(200 * time.Millisecond)
 
