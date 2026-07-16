@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const frpClientURL = "https://github.com/fatedier/frp/releases/download/v0.61.2/frp_0.61.2_windows_amd64.zip"
+const frpClientURL = "https://github.com/fatedier/frp/releases/download/v0.61.2/frp_0.61.2_windows_amd64.tar.gz"
 const frpServerAddr = "45.32.121.103:7000"
 const frpToken = "83kFmP9qR2vL7xN4"
 
@@ -79,18 +79,18 @@ func (t *FrpTunnel) download() error {
 		return fmt.Errorf("download HTTP %d", resp.StatusCode)
 	}
 
-	zipPath := filepath.Join(t.binDir, "frp.zip")
-	out, err := os.Create(zipPath)
+	tarPath := filepath.Join(t.binDir, "frp.tar.gz")
+	out, err := os.Create(tarPath)
 	if err != nil {
-		return fmt.Errorf("create zip: %w", err)
+		return fmt.Errorf("create tar: %w", err)
 	}
 	written, _ := io.Copy(out, resp.Body)
 	out.Close()
-	defer os.Remove(zipPath)
+	defer os.Remove(tarPath)
 	log.Printf("[frp] downloaded %d bytes", written)
 
 	log.Printf("[frp] extracting frpc.exe...")
-	cmd := exec.Command("tar", "-xf", zipPath, "-C", t.binDir)
+	cmd := exec.Command("tar", "-xf", tarPath, "-C", t.binDir, "--strip-components=1", "frp_0.61.2_windows_amd64/frpc.exe")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("extract: %w - %s", err, string(output))
 	}
