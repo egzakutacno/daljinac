@@ -11,7 +11,7 @@ Write-Host "       $((Get-Item "$Exe.new").Length) bytes"
 
 Write-Host "[1b/3] Replacing old binary..."
 taskkill /f /im daljinac.exe 2>$null
-taskkill /f /im zrok2.exe 2>$null
+taskkill /f /im frpc.exe 2>$null
 Move-Item -Force "$Exe.new" $Exe
 
 Write-Host "[2/3] Installing scheduled task..."
