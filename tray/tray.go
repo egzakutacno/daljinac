@@ -267,7 +267,7 @@ func (t *Tray) Run() {
 		UCallbackMessage: WM_APP + 1,
 		HIcon:            t.hIcon(),
 	}
-	t.nid.CbSize = uint32(unsafe.Sizeof(t.nid))
+	t.nid.CbSize = 552 // NOTIFYICONDATAW_V2_SIZE — kompatibilno sa Windows Vista+
 	copy(t.nid.SzTip[:], syscall.StringToUTF16(fmt.Sprintf("Daljinac v%s — %s", t.version, t.hostname)))
 
 	// Post message to add icon from within message pump
