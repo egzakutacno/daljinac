@@ -34,7 +34,7 @@ func initLog() {
 	}
 }
 
-const version = "2.4.0-notray"
+const version = "2.4.1-notray"
 
 func main() {
 	defer func() {
@@ -128,7 +128,7 @@ func main() {
 		}
 	}()
 
-	t = tunnel.NewRathole(*port, hostname, onConnect)
+	t = tunnel.NewFrp(*port, hostname, onConnect)
 	t.Start()
 
 	if *noTray {
