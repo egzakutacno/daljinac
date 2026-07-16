@@ -262,7 +262,7 @@ func (t *ChiselTunnel) connect() {
 	}()
 
 	t.mu.Lock()
-	t.url = fmt.Sprintf("http://45.32.121.103:%d", t.remotePort)
+	t.url = fmt.Sprintf("http://31.220.74.109:%d", t.remotePort)
 	t.mu.Unlock()
 	log.Printf("[chisel] URL: %s", t.url)
 	if t.onConnected != nil {
