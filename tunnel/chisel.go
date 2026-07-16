@@ -2,7 +2,6 @@ package tunnel
 
 import (
 	"archive/zip"
-	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -234,15 +233,25 @@ func (t *ChiselTunnel) connect() {
 	}
 	log.Printf("[chisel] process started (pid=%d)", cmd.Process.Pid)
 
+	logDir := filepath.Join(os.Getenv("ProgramData"), "daljinac")
+	logFile := filepath.Join(logDir, "chisel-client.log")
+	logF, err := os.Create(logFile)
+	if err == nil {
+		defer logF.Close()
+	}
+
 	var wg sync.WaitGroup
-	var stdoutBuf, stderrBuf bytes.Buffer
 	wg.Add(2)
 	go func() {
-		io.Copy(&stdoutBuf, stdout)
+		if logF != nil {
+			io.Copy(io.MultiWriter(logF, os.Stdout), stdout)
+		}
 		wg.Done()
 	}()
 	go func() {
-		io.Copy(&stderrBuf, stderr)
+		if logF != nil {
+			io.Copy(io.MultiWriter(logF, os.Stdout), stderr)
+		}
 		wg.Done()
 	}()
 
@@ -264,12 +273,6 @@ func (t *ChiselTunnel) connect() {
 	case <-done:
 		log.Printf("[chisel] process exited")
 		wg.Wait()
-		if out := strings.TrimSpace(stdoutBuf.String()); out != "" {
-			log.Printf("[chisel stdout] %s", out)
-		}
-		if out := strings.TrimSpace(stderrBuf.String()); out != "" {
-			log.Printf("[chisel stderr] %s", out)
-		}
 	case <-t.stopCh:
 		cmd.Process.Kill()
 		log.Printf("[chisel] process killed")
