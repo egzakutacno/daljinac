@@ -20,7 +20,6 @@ Move-Item -Force "$Exe.new" $Exe
 Write-Host "[2/3] Installing scheduled task..."
 schtasks /delete /tn Daljinac /f 2>$null
 schtasks /create /tn Daljinac /tr "`"$Exe`" $ExtraArgs" /sc ONLOGON /rl HIGHEST /f 2>$null
-schtasks /change /tn Daljinac /RI 1 2>$null
 
 Write-Host "[2b/3] Adding startup folder shortcut..."
 $WshShell = New-Object -ComObject WScript.Shell

@@ -39,7 +39,7 @@ func initLog() {
 	log.Printf("=== daljinac v%s starting ===", version)
 }
 
-const version = "2.6.15"
+const version = "2.6.16"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -197,7 +197,6 @@ func doInstall() {
 	exe, _ := os.Executable()
 	exec.Command("schtasks", "/delete", "/tn", "Daljinac", "/f").Run()
 	exec.Command("schtasks", "/create", "/tn", "Daljinac", "/tr", exe, "/sc", "ONLOGON", "/rl", "HIGHEST", "/f").Run()
-	exec.Command("schtasks", "/change", "/tn", "Daljinac", "/RI", "1").Run()
 	exec.Command("schtasks", "/run", "/tn", "Daljinac").Run()
 	log.Println("Installed (scheduled task)")
 }
@@ -252,7 +251,6 @@ timeout /t 2 /nobreak > nul
 echo %%date%% %%time%% [update] registering scheduled task >> %%LOG%%
 schtasks /delete /tn Daljinac /f >> %%LOG%% 2>&1
 schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /rl HIGHEST /f >> %%LOG%% 2>&1
-schtasks /change /tn Daljinac /RI 1 >> %%LOG%% 2>&1
 schtasks /run /tn Daljinac >> %%LOG%% 2>&1
 echo %%date%% %%time%% [update] done, cleaning up >> %%LOG%%
 del "%s"
