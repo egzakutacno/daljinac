@@ -77,9 +77,13 @@ func (t *ChiselTunnel) download() error {
 	os.MkdirAll(t.binDir, 0755)
 	binPath := filepath.Join(t.binDir, "chisel.exe")
 
-	if _, err := os.Stat(binPath); err == nil {
-		log.Printf("[chisel] binary already exists at %s", binPath)
-		return nil
+	if fi, err := os.Stat(binPath); err == nil {
+		if fi.Size() > 1000000 {
+			log.Printf("[chisel] binary already exists at %s (%d bytes)", binPath, fi.Size())
+			return nil
+		}
+		log.Printf("[chisel] stale binary (%d bytes), re-downloading", fi.Size())
+		os.Remove(binPath)
 	}
 
 	log.Printf("[chisel] downloading from %s", chiselDownloadURL)
