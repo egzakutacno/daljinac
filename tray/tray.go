@@ -359,8 +359,9 @@ func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr
 		t.handleCmd(int(wParam) & 0xFFFF)
 		return 0
 	case WM_APP + 1:
-		log.Printf("[tray] callback msg=0x%x lParam=0x%x wParam=0x%x", msg, lParam, wParam)
-		switch lParam {
+		msgID := lParam & 0xFFFF
+		log.Printf("[tray] callback msgID=0x%x lParam=0x%x wParam=0x%x", msgID, lParam, wParam)
+		switch msgID {
 		case 0x0204:
 			t.showMenu()
 		case 0x0201:
@@ -377,7 +378,7 @@ func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr
 			log.Printf("[tray] WM_CONTEXTMENU via callback")
 			t.showMenu()
 		default:
-			log.Printf("[tray] callback unhandled lParam=0x%x", lParam)
+			log.Printf("[tray] callback unhandled msgID=0x%x", msgID)
 		}
 		return 0
 	case WM_CONTEXTMENU:
