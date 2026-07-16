@@ -34,7 +34,7 @@ func initLog() {
 	}
 }
 
-const version = "2.4.1"
+const version = "2.4.3"
 
 func main() {
 	defer func() {
@@ -128,7 +128,7 @@ func main() {
 		}
 	}()
 
-	t = tunnel.NewFrp(*port, hostname, onConnect)
+	t = tunnel.NewChisel(*port, hostname, onConnect)
 	t.Start()
 
 	if *noTray {

