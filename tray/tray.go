@@ -126,6 +126,7 @@ type Tray struct {
 	statusIcon   int
 	addRetries   int
 	taskbarMsg   uint32
+	iconAdded    bool
 	mu           sync.RWMutex
 
 	OnCopyURL       func()
@@ -138,8 +139,7 @@ func (t *Tray) addOrUpdateIcon() bool {
 	shellNotifyIconW.Call(NIM_DELETE, uintptr(unsafe.Pointer(&t.nid)))
 	add, _, _ := shellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&t.nid)))
 	if add != 0 {
-		t.nid.UVersion = 4
-		shellNotifyIconW.Call(NIM_SETVERSION, uintptr(unsafe.Pointer(&t.nid)))
+		t.iconAdded = true
 	}
 	return add != 0
 }
@@ -163,6 +163,9 @@ func (t *Tray) SetRunning() {
 }
 
 func (t *Tray) updateTip() {
+	if !t.iconAdded {
+		return
+	}
 	t.mu.RLock()
 	s := fmt.Sprintf("Daljinac — %s", t.hostname)
 	if t.url != "" {
@@ -339,6 +342,7 @@ func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr
 		t.handleCmd(int(wParam) & 0xFFFF)
 		return 0
 	case WM_APP + 1:
+		log.Printf("[tray] callback msg=%d lParam=0x%x", msg, lParam)
 		if lParam == 0x0204 {
 			t.showMenu()
 		} else if lParam == 0x0201 {
@@ -368,7 +372,11 @@ func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr
 	if t.taskbarMsg != 0 && msg == t.taskbarMsg {
 		log.Printf("[tray] TaskbarCreated — re-adding icon")
 		t.addRetries = 10
-		t.addOrUpdateIcon()
+		ok := t.addOrUpdateIcon()
+		log.Printf("[tray] TaskbarCreated icon re-add: ok=%v", ok)
+		if !ok {
+			postMessageW.Call(hwnd, WM_TRAY_RETRY, 0, 0)
+		}
 		return 0
 	}
 	ret, _, _ := defWindowProcW.Call(hwnd, uintptr(msg), wParam, lParam)
