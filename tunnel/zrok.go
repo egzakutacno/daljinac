@@ -272,6 +272,7 @@ func (t *Tunnel) connect() {
 		"share", "public",
 		fmt.Sprintf("http://127.0.0.1:%d", t.localPort),
 		"--headless",
+		"-b", "web",
 	}
 	if t.hasName && t.shareName != "" {
 		// Recreate name before each share to avoid 409 "name already in use" on retry
