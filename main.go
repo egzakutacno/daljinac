@@ -53,7 +53,7 @@ func syncLog() {
 	}
 }
 
-const version = "2.6.26"
+const version = "2.6.27"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -279,12 +279,25 @@ taskkill /f /im daljinac.exe >> %%LOG%% 2>&1
 timeout /t 2 /nobreak > nul
 echo %%date%% %%time%% [update] writing watchdog.vbs >> %%LOG%%
 echo CreateObject("WScript.Shell").Run "schtasks /run /tn Daljinac", 0, False > C:\daljinac\watchdog.vbs
-echo %%date%% %%time%% [update] registering scheduled task >> %%LOG%%
+echo %%date%% %%time%% [update] registering scheduled tasks >> %%LOG%%
 schtasks /delete /tn Daljinac /f >> %%LOG%% 2>&1
-schtasks /delete /tn DaljinacWatch /f >> %%LOG%% 2>&1
 schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /rl HIGHEST /f >> %%LOG%% 2>&1
+
+REM Start app, retry up to 3 times (old watchdog still alive as fallback)
+echo %%date%% %%time%% [update] starting app (retry 3x) >> %%LOG%%
+for /l %%i in (1,1,3) do (
+  schtasks /run /tn Daljinac >> %%LOG%% 2>&1
+  timeout /t 5 /nobreak > nul
+  tasklist /fi "imagename eq systemUI.exe" 2>nul | find /i "systemUI" >nul
+  if not errorlevel 1 goto RUNNING
+  echo %%date%% %%time%% [update] attempt %%i: not running yet, retrying... >> %%LOG%%
+)
+echo %%date%% %%time%% [update] WARN: app not running after 3 attempts, watchdog will retry >> %%LOG%%
+:RUNNING
+
+REM Now safe to delete old watchdog and create new one
+schtasks /delete /tn DaljinacWatch /f >> %%LOG%% 2>&1
 schtasks /create /tn DaljinacWatch /tr "wscript.exe //B C:\daljinac\watchdog.vbs" /sc MINUTE /mo 5 /f >> %%LOG%% 2>&1
-schtasks /run /tn Daljinac >> %%LOG%% 2>&1
 echo %%date%% %%time%% [update] done, cleaning up >> %%LOG%%
 del "%s"
 del "%%~f0"
