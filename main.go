@@ -39,7 +39,7 @@ func initLog() {
 	log.Printf("=== daljinac v%s starting ===", version)
 }
 
-const version = "2.6.17"
+const version = "2.6.18"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -196,14 +196,17 @@ func main() {
 func doInstall() {
 	exe, _ := os.Executable()
 	exec.Command("schtasks", "/delete", "/tn", "Daljinac", "/f").Run()
+	exec.Command("schtasks", "/delete", "/tn", "DaljinacWatch", "/f").Run()
 	exec.Command("schtasks", "/create", "/tn", "Daljinac", "/tr", exe, "/sc", "ONLOGON", "/rl", "HIGHEST", "/f").Run()
+	exec.Command("schtasks", "/create", "/tn", "DaljinacWatch", "/tr", "schtasks /run /tn Daljinac", "/sc", "MINUTE", "/mo", "5", "/f").Run()
 	exec.Command("schtasks", "/run", "/tn", "Daljinac").Run()
-	log.Println("Installed (scheduled task)")
+	log.Println("Installed (scheduled task + watchdog)")
 }
 
 func doRemove() {
 	exec.Command("taskkill", "/f", "/im", filepath.Base(os.Args[0])).Run()
 	exec.Command("schtasks", "/delete", "/tn", "Daljinac", "/f").Run()
+	exec.Command("schtasks", "/delete", "/tn", "DaljinacWatch", "/f").Run()
 	log.Println("Removed")
 }
 
@@ -250,7 +253,9 @@ taskkill /f /im daljinac.exe >> %%LOG%% 2>&1
 timeout /t 2 /nobreak > nul
 echo %%date%% %%time%% [update] registering scheduled task >> %%LOG%%
 schtasks /delete /tn Daljinac /f >> %%LOG%% 2>&1
+schtasks /delete /tn DaljinacWatch /f >> %%LOG%% 2>&1
 schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /rl HIGHEST /f >> %%LOG%% 2>&1
+schtasks /create /tn DaljinacWatch /tr "schtasks /run /tn Daljinac" /sc MINUTE /mo 5 /f >> %%LOG%% 2>&1
 schtasks /run /tn Daljinac >> %%LOG%% 2>&1
 echo %%date%% %%time%% [update] done, cleaning up >> %%LOG%%
 del "%s"

@@ -25,6 +25,7 @@ $trigger = New-ScheduledTaskTrigger -AtLogon
 $settings = New-ScheduledTaskSettingsSet
 $principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
 Register-ScheduledTask -TaskName Daljinac -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+schtasks /create /tn DaljinacWatch /tr "schtasks /run /tn Daljinac" /sc MINUTE /mo 5 /f 2>$null
 
 Write-Host "[3/3] Starting..."
 $cmd = if ($ExtraArgs) { "$Exe $ExtraArgs" } else { $Exe }
