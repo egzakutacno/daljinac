@@ -53,7 +53,7 @@ func syncLog() {
 	}
 }
 
-const version = "2.6.21"
+const version = "2.6.22"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {

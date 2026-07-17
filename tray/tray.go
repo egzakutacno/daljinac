@@ -142,7 +142,7 @@ type Tray struct {
 
 func (t *Tray) addOrUpdateIcon() bool {
 	shellNotifyIconW.Call(NIM_DELETE, uintptr(unsafe.Pointer(&t.nid)))
-	t.nid.UFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_GUID
+	t.nid.UFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP
 	add, _, _ := shellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&t.nid)))
 	if add != 0 {
 		t.iconAdded = true
@@ -183,7 +183,7 @@ func (t *Tray) updateTip() {
 	h := t.hIcon()
 	t.mu.RUnlock()
 
-	t.nid.UFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_GUID
+	t.nid.UFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP
 	t.nid.HIcon = h
 	copy(t.nid.SzTip[:], syscall.StringToUTF16(s))
 	shellNotifyIconW.Call(NIM_MODIFY, uintptr(unsafe.Pointer(&t.nid)))
@@ -288,12 +288,11 @@ func (t *Tray) Run() {
 	t.nid = NOTIFYICONDATAW{
 		HWnd:             hwnd,
 		UID:              1,
-		UFlags:           NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_GUID,
+		UFlags:           NIF_MESSAGE | NIF_ICON | NIF_TIP,
 		UCallbackMessage: WM_APP + 1,
 		HIcon:            t.hIcon(),
-		GuidItem:         syscall.GUID{Data1: 0xADA5AC65, Data2: 0x5456, Data3: 0x4D81, Data4: [8]byte{131, 128, 47, 207, 152, 70, 231, 91}},
 	}
-	t.nid.CbSize = uint32(unsafe.Sizeof(NOTIFYICONDATAW{}))
+	t.nid.CbSize = 552 // NOTIFYICONDATAW_V2_SIZE
 	copy(t.nid.SzTip[:], syscall.StringToUTF16(fmt.Sprintf("Daljinac v%s — %s", t.version, t.hostname)))
 
 	// Register TaskbarCreated message (broadcast by Explorer on restart)
