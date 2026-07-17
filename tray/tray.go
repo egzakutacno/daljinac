@@ -343,13 +343,6 @@ func (t *Tray) Stop() {
 }
 
 func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
-	t.mu.Lock()
-	t.msgCount++
-	count := t.msgCount
-	t.mu.Unlock()
-	if count <= 10 {
-		log.Printf("[tray] wndProc msg=0x%x wParam=0x%x lParam=0x%x (#%d)", msg, wParam, lParam, count)
-	}
 	switch msg {
 	case WM_DESTROY:
 		postQuitMessage.Call(0)
@@ -359,7 +352,6 @@ func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr
 		return 0
 	case WM_APP + 1:
 		msgID := lParam & 0xFFFF
-		log.Printf("[tray] callback msgID=0x%x lParam=0x%x wParam=0x%x", msgID, lParam, wParam)
 		switch msgID {
 		case 0x0204:
 			t.showMenu()
@@ -377,11 +369,9 @@ func (t *Tray) wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr
 			log.Printf("[tray] WM_CONTEXTMENU via callback")
 			t.showMenu()
 		default:
-			log.Printf("[tray] callback unhandled msgID=0x%x", msgID)
 		}
 		return 0
 	case WM_CONTEXTMENU:
-		log.Printf("[tray] WM_CONTEXTMENU direct msg=0x%x", msg)
 		t.showMenu()
 		return 0
 	case WM_TRAY_RETRY:
