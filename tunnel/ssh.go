@@ -174,23 +174,27 @@ func (t *SSHTunnel) connect() {
 	t.mu.Unlock()
 
 	t.mu.Lock()
-	t.url = fmt.Sprintf("http://31.220.74.109:%d", t.remotePort)
-	t.mu.Unlock()
-	log.Printf("[ssh] URL: %s", t.url)
-	t.mu.Lock()
 	t.lastConnected = time.Now()
 	t.mu.Unlock()
-	if t.onConnected != nil {
-		t.onConnected(t.url)
-	}
 
-	listener, err := client.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", t.remotePort))
-	if err != nil {
-		log.Printf("[ssh] listen error on remote port %d: %v", t.remotePort, err)
+	var listener net.Listener
+	for port := t.remotePort; port <= 7090; port++ {
+		listener, err = client.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
+		if err == nil {
+			t.mu.Lock()
+			t.remotePort = port
+			t.url = fmt.Sprintf("http://31.220.74.109:%d", port)
+			t.mu.Unlock()
+			log.Printf("[ssh] listening on 0.0.0.0:%d (forwarding -> 127.0.0.1:%d)", port, t.localPort)
+			break
+		}
+		log.Printf("[ssh] port %d: %v", port, err)
+	}
+	if listener == nil {
+		log.Printf("[ssh] no free port in range %d-7090", t.remotePort)
 		client.Close()
 		return
 	}
-	log.Printf("[ssh] listening on 0.0.0.0:%d (forwarding -> 127.0.0.1:%d)", t.remotePort, t.localPort)
 
 	// Keepalive: refresh lastConnected every 30s while tunnel is active
 	go func() {
