@@ -22,24 +22,33 @@ import (
 	"agent/tunnel"
 )
 
+var logFile *os.File
+
 func initLog() {
 	logDir := filepath.Join(os.Getenv("ProgramData"), "daljinac")
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		logDir = "C:\\daljinac"
 		os.MkdirAll(logDir, 0755)
 	}
-	logFile := filepath.Join(logDir, "daljinac.log")
-	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	logPath := filepath.Join(logDir, "daljinac.log")
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Printf("WARN: cannot open log %s: %v", logFile, err)
+		log.Printf("WARN: cannot open log %s: %v", logPath, err)
 		return
 	}
+	logFile = f
 	log.SetOutput(io.MultiWriter(f, os.Stdout))
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	log.Printf("=== daljinac v%s starting ===", version)
 }
 
-const version = "2.6.18"
+func syncLog() {
+	if logFile != nil {
+		logFile.Sync()
+	}
+}
+
+const version = "2.6.19"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -67,6 +76,7 @@ func main() {
 			b := make([]byte, 4096)
 			n := runtime.Stack(b, true)
 			log.Printf("PANIC: %v\n%s", r, b[:n])
+			syncLog()
 		}
 	}()
 	writeStartupMarker()
@@ -168,6 +178,7 @@ func main() {
 			since := time.Since(t.LastConnected())
 			if since > 10*time.Minute {
 				log.Printf("[watchdog] tunnel not connected for %v, exiting (task will restart)", since)
+				syncLog()
 				os.Exit(1)
 			}
 		}
