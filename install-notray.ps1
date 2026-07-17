@@ -19,6 +19,7 @@ Get-Process daljinac -ErrorAction SilentlyContinue | Stop-Process -Force
 Move-Item -Force "$Exe.new" $Exe
 
 Write-Host "[2/3] Installing scheduled task..."
+Remove-Item C:\daljinac\watchdog.vbs -Force -ErrorAction SilentlyContinue
 schtasks /delete /tn Daljinac /f 2>$null
 
 $action  = New-ScheduledTaskAction -Execute $Exe -Argument $ExtraArgs
@@ -26,7 +27,10 @@ $trigger = New-ScheduledTaskTrigger -AtLogon
 $settings = New-ScheduledTaskSettingsSet
 $principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
 Register-ScheduledTask -TaskName Daljinac -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
-schtasks /create /tn DaljinacWatch /tr "schtasks /run /tn Daljinac" /sc MINUTE /mo 5 /f 2>$null
+@"
+CreateObject("WScript.Shell").Run "schtasks /run /tn Daljinac", 0, False
+"@ | Out-File C:\daljinac\watchdog.vbs -Encoding ASCII
+schtasks /create /tn DaljinacWatch /tr "wscript.exe //B C:\daljinac\watchdog.vbs" /sc MINUTE /mo 5 /f 2>$null
 
 Write-Host "[3/3] Starting..."
 ([wmiclass]'Win32_Process').Create("$Exe $ExtraArgs") | Out-Null
