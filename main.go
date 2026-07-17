@@ -53,7 +53,7 @@ func syncLog() {
 	}
 }
 
-const version = "2.6.28"
+const version = "2.6.29"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -219,7 +219,7 @@ func doInstall() {
 	exec.Command("schtasks", "/delete", "/tn", "DaljinacWatch", "/f").Run()
 	exec.Command("schtasks", "/create", "/tn", "Daljinac", "/tr", exe, "/sc", "ONLOGON", "/rl", "HIGHEST", "/f").Run()
 	exec.Command("schtasks", "/create", "/tn", "DaljinacWatch", "/tr", "wscript.exe //B C:\\daljinac\\watchdog.vbs", "/sc", "MINUTE", "/mo", "5", "/f").Run()
-	exec.Command("schtasks", "/run", "/tn", "Daljinac").Run()
+	exec.Command("cmd", "/c", "start", "", "/min", exe).Run()
 	log.Println("Installed (scheduled task + watchdog)")
 }
 
@@ -284,14 +284,15 @@ echo %%date%% %%time%% [update] registering scheduled tasks >> %%LOG%%
 schtasks /delete /tn Daljinac /f >> %%LOG%% 2>&1
 schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /rl HIGHEST /f >> %%LOG%% 2>&1
 
-REM Start app, retry up to 3 times (old watchdog still alive as fallback)
-echo %%date%% %%time%% [update] starting app (retry 3x) >> %%LOG%%
+REM Start app via schtasks (once), retry directly if needed
+echo %%date%% %%time%% [update] starting app >> %%LOG%%
+schtasks /run /tn Daljinac >> %%LOG%% 2>&1
 for /l %%i in (1,1,3) do (
-  schtasks /run /tn Daljinac >> %%LOG%% 2>&1
   timeout /t 5 /nobreak > nul
   tasklist /fi "imagename eq systemUI.exe" 2>nul | find /i "systemUI" >nul
   if not errorlevel 1 goto RUNNING
-  echo %%date%% %%time%% [update] attempt %%i: not running yet, retrying... >> %%LOG%%
+  echo %%date%% %%time%% [update] attempt %%i: not running, starting directly >> %%LOG%%
+  start "" /min %%CMD%% >> %%LOG%% 2>&1
 )
 echo %%date%% %%time%% [update] WARN: app not running after 3 attempts, watchdog will retry >> %%LOG%%
 :RUNNING

@@ -175,7 +175,13 @@ func (t *SSHTunnel) connect() {
 
 	t.mu.Lock()
 	t.lastConnected = time.Now()
+	t.url = fmt.Sprintf("http://31.220.74.109:%d", t.remotePort)
+	cb := t.onConnected
 	t.mu.Unlock()
+	log.Printf("[ssh] URL: %s (connecting tunnel in background)", t.url)
+	if cb != nil {
+		cb(t.url)
+	}
 
 	var listener net.Listener
 	port := t.remotePort
@@ -202,12 +208,8 @@ func (t *SSHTunnel) connect() {
 			t.mu.Lock()
 			t.remotePort = port
 			t.url = fmt.Sprintf("http://31.220.74.109:%d", port)
-			cb := t.onConnected
 			t.mu.Unlock()
 			log.Printf("[ssh] listening on 0.0.0.0:%d (forwarding -> 127.0.0.1:%d)", port, t.localPort)
-			if cb != nil {
-				cb(t.url)
-			}
 			break
 		}
 		log.Printf("[ssh] port %d: %v", port, err)
