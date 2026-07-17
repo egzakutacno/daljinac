@@ -192,6 +192,22 @@ func (t *SSHTunnel) connect() {
 	}
 	log.Printf("[ssh] listening on 0.0.0.0:%d (forwarding -> 127.0.0.1:%d)", t.remotePort, t.localPort)
 
+	// Keepalive: refresh lastConnected every 30s while tunnel is active
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-t.stopCh:
+				return
+			case <-ticker.C:
+				t.mu.Lock()
+				t.lastConnected = time.Now()
+				t.mu.Unlock()
+			}
+		}
+	}()
+
 	acceptCh := make(chan net.Conn)
 	go func() {
 		for {
