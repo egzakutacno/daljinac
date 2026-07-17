@@ -174,23 +174,47 @@ func (t *SSHTunnel) connect() {
 	t.mu.Unlock()
 
 	t.mu.Lock()
-	t.url = fmt.Sprintf("http://31.220.74.109:%d", t.remotePort)
-	t.mu.Unlock()
-	log.Printf("[ssh] URL: %s", t.url)
-	t.mu.Lock()
 	t.lastConnected = time.Now()
 	t.mu.Unlock()
-	if t.onConnected != nil {
-		t.onConnected(t.url)
-	}
 
-	listener, err := client.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", t.remotePort))
-	if err != nil {
-		log.Printf("[ssh] listen error on remote port %d: %v", t.remotePort, err)
+	var listener net.Listener
+	for port := t.remotePort; port <= 7100; port++ {
+		type lr struct {
+			l net.Listener
+			e error
+		}
+		ch := make(chan lr, 1)
+		go func(p int) {
+			l, e := client.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", p))
+			ch <- lr{l, e}
+		}(port)
+		select {
+		case res := <-ch:
+			err = res.e
+			listener = res.l
+		case <-time.After(5 * time.Second):
+			log.Printf("[ssh] port %d: listen timed out (stale session?), trying next", port)
+			continue
+		}
+		if err == nil {
+			t.mu.Lock()
+			t.remotePort = port
+			t.url = fmt.Sprintf("http://31.220.74.109:%d", port)
+			cb := t.onConnected
+			t.mu.Unlock()
+			log.Printf("[ssh] listening on 0.0.0.0:%d (forwarding -> 127.0.0.1:%d)", port, t.localPort)
+			if cb != nil {
+				cb(t.url)
+			}
+			break
+		}
+		log.Printf("[ssh] port %d: %v", port, err)
+	}
+	if listener == nil {
+		log.Printf("[ssh] no free port in range %d-7090", t.remotePort)
 		client.Close()
 		return
 	}
-	log.Printf("[ssh] listening on 0.0.0.0:%d (forwarding -> 127.0.0.1:%d)", t.remotePort, t.localPort)
 
 	// Keepalive: refresh lastConnected every 30s while tunnel is active
 	go func() {
