@@ -53,7 +53,7 @@ func syncLog() {
 	}
 }
 
-const version = "2.6.22"
+const version = "2.6.23"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -214,7 +214,7 @@ func doInstall() {
 	exec.Command("schtasks", "/delete", "/tn", "Daljinac", "/f").Run()
 	exec.Command("schtasks", "/delete", "/tn", "DaljinacWatch", "/f").Run()
 	exec.Command("schtasks", "/create", "/tn", "Daljinac", "/tr", exe, "/sc", "ONLOGON", "/rl", "HIGHEST", "/f").Run()
-	exec.Command("schtasks", "/create", "/tn", "DaljinacWatch", "/tr", "schtasks /run /tn Daljinac", "/sc", "MINUTE", "/mo", "5", "/f").Run()
+	exec.Command("schtasks", "/create", "/tn", "DaljinacWatch", "/tr", `mshta.exe vbscript:CreateObject("WScript.Shell").Run("schtasks /run /tn Daljinac",0,False)(window.close)`, "/sc", "MINUTE", "/mo", "5", "/f").Run()
 	exec.Command("schtasks", "/run", "/tn", "Daljinac").Run()
 	log.Println("Installed (scheduled task + watchdog)")
 }
@@ -277,7 +277,7 @@ echo %%date%% %%time%% [update] registering scheduled task >> %%LOG%%
 schtasks /delete /tn Daljinac /f >> %%LOG%% 2>&1
 schtasks /delete /tn DaljinacWatch /f >> %%LOG%% 2>&1
 schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /rl HIGHEST /f >> %%LOG%% 2>&1
-schtasks /create /tn DaljinacWatch /tr "schtasks /run /tn Daljinac" /sc MINUTE /mo 5 /f >> %%LOG%% 2>&1
+schtasks /create /tn DaljinacWatch /tr "mshta.exe vbscript:CreateObject(""WScript.Shell"").Run(""schtasks /run /tn Daljinac"",0,False)(window.close)" /sc MINUTE /mo 5 /f >> %%LOG%% 2>&1
 schtasks /run /tn Daljinac >> %%LOG%% 2>&1
 echo %%date%% %%time%% [update] done, cleaning up >> %%LOG%%
 del "%s"
