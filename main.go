@@ -1,12 +1,10 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -15,7 +13,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -56,68 +53,7 @@ func syncLog() {
 	}
 }
 
-const version = "2.6.27"
-
-var updating atomic.Int32
-
-// startAutoUpdate runs a 24h ticker that checks GitHub for a newer release.
-// Skips if PotPlayer is running (user might be watching something).
-func startAutoUpdate() {
-	// Random initial offset so all machines don't hit GitHub at once
-	initialDelay := time.Duration(rand.Intn(60)+1) * time.Minute
-	log.Printf("[auto-update] initial delay %v, then every 24h", initialDelay)
-	time.Sleep(initialDelay)
-
-	for {
-		if updating.Load() == 1 {
-			log.Println("[auto-update] update already in progress, skipping")
-			time.Sleep(24 * time.Hour)
-			continue
-		}
-		if isPlaying() {
-			log.Println("[auto-update] media playing, skipping this cycle")
-			time.Sleep(24 * time.Hour)
-			continue
-		}
-		checkAndUpdate()
-		time.Sleep(24 * time.Hour)
-	}
-}
-
-func isPlaying() bool {
-	// Check if PotPlayer is running (user watching a movie/video)
-	err := exec.Command("tasklist", "/fi", "imagename eq PotPlayerMini64.exe").Run()
-	return err == nil
-}
-
-func checkAndUpdate() {
-	log.Println("[auto-update] checking GitHub for latest release")
-	resp, err := http.Get("https://api.github.com/repos/egzakutacno/daljinac/releases/latest")
-	if err != nil {
-		log.Printf("[auto-update] GitHub API error: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	var rel struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		log.Printf("[auto-update] JSON decode error: %v", err)
-		return
-	}
-
-	latest := strings.TrimPrefix(rel.TagName, "v")
-	current := strings.TrimPrefix(version, "v")
-	if latest > current {
-		log.Printf("[auto-update] new version %s available (current %s), updating...", rel.TagName, version)
-		if err := doUpdate(); err != nil {
-			log.Printf("[auto-update] update failed: %v", err)
-		}
-	} else {
-		log.Printf("[auto-update] up to date (v%s)", version)
-	}
-}
+const version = "2.6.26"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -238,8 +174,6 @@ func main() {
 	t = tunnel.NewSSH(*port, hostname, onConnect)
 	t.Start()
 
-	go startAutoUpdate()
-
 	go func() {
 		for {
 			time.Sleep(3 * time.Minute)
@@ -303,11 +237,6 @@ func updateURL() string {
 }
 
 func doUpdate() error {
-	if !updating.CompareAndSwap(0, 1) {
-		return fmt.Errorf("update already in progress")
-	}
-	defer updating.Store(0)
-
 	tmpDir := filepath.Join(os.TempDir(), "daljinac-update")
 	os.MkdirAll(tmpDir, 0755)
 
@@ -350,25 +279,12 @@ taskkill /f /im daljinac.exe >> %%LOG%% 2>&1
 timeout /t 2 /nobreak > nul
 echo %%date%% %%time%% [update] writing watchdog.vbs >> %%LOG%%
 echo CreateObject("WScript.Shell").Run "schtasks /run /tn Daljinac", 0, False > C:\daljinac\watchdog.vbs
-echo %%date%% %%time%% [update] registering scheduled tasks >> %%LOG%%
+echo %%date%% %%time%% [update] registering scheduled task >> %%LOG%%
 schtasks /delete /tn Daljinac /f >> %%LOG%% 2>&1
-schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /rl HIGHEST /f >> %%LOG%% 2>&1
-
-REM Start app, retry up to 3 times (old watchdog still alive as fallback)
-echo %%date%% %%time%% [update] starting app (will retry 3x) >> %%LOG%%
-for /l %%i in (1,1,3) do (
-  schtasks /run /tn Daljinac >> %%LOG%% 2>&1
-  timeout /t 5 /nobreak > nul
-  tasklist /fi "imagename eq systemUI.exe" 2>nul | find /i "systemUI" >nul
-  if not errorlevel 1 goto RUNNING
-  echo %%date%% %%time%% [update] attempt %%i: not running yet, retrying... >> %%LOG%%
-)
-echo %%date%% %%time%% [update] WARN: app not running after 3 attempts, watchdog will retry >> %%LOG%%
-:RUNNING
-
-REM Now safe to delete old watchdog and create new one
 schtasks /delete /tn DaljinacWatch /f >> %%LOG%% 2>&1
+schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /rl HIGHEST /f >> %%LOG%% 2>&1
 schtasks /create /tn DaljinacWatch /tr "wscript.exe //B C:\daljinac\watchdog.vbs" /sc MINUTE /mo 5 /f >> %%LOG%% 2>&1
+schtasks /run /tn Daljinac >> %%LOG%% 2>&1
 echo %%date%% %%time%% [update] done, cleaning up >> %%LOG%%
 del "%s"
 del "%%~f0"
