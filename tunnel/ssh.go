@@ -144,7 +144,7 @@ func (t *SSHTunnel) Run() {
 			return
 		case <-time.After(delay):
 		}
-		delay = min(delay*2, 60*time.Second)
+		delay = min(delay*2, 30*time.Second)
 	}
 }
 
@@ -178,7 +178,8 @@ func (t *SSHTunnel) connect() {
 	t.mu.Unlock()
 
 	var listener net.Listener
-	for port := t.remotePort; port <= 7100; port++ {
+	port := t.remotePort
+	for ; port <= 7100; port++ {
 		type lr struct {
 			l net.Listener
 			e error
@@ -192,9 +193,10 @@ func (t *SSHTunnel) connect() {
 		case res := <-ch:
 			err = res.e
 			listener = res.l
-		case <-time.After(5 * time.Second):
-			log.Printf("[ssh] port %d: listen timed out (stale session?), trying next", port)
-			continue
+		case <-time.After(2 * time.Second):
+			log.Printf("[ssh] port %d: listen timed out (stale session), retrying later", port)
+			client.Close()
+			return
 		}
 		if err == nil {
 			t.mu.Lock()
@@ -211,7 +213,7 @@ func (t *SSHTunnel) connect() {
 		log.Printf("[ssh] port %d: %v", port, err)
 	}
 	if listener == nil {
-		log.Printf("[ssh] no free port in range %d-7090", t.remotePort)
+		log.Printf("[ssh] no free port in range %d-7100", t.remotePort)
 		client.Close()
 		return
 	}

@@ -53,7 +53,7 @@ func syncLog() {
 	}
 }
 
-const version = "2.6.27"
+const version = "2.6.28"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -113,6 +113,7 @@ func main() {
 
 	shutdown := make(chan struct{})
 	hostname, _ := os.Hostname()
+	log.Printf("Hostname: %s, Version: %s, Port: %d, Tray: %v", hostname, version, *port, !*noTray)
 
 	srv := server.New(*tag, version)
 	tr := tray.New(hostname, version)
