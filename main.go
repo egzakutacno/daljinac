@@ -53,7 +53,7 @@ func syncLog() {
 	}
 }
 
-const version = "2.6.20"
+const version = "2.6.21"
 
 func hideConsole() {
 	if runtime.GOOS != "windows" {
@@ -220,7 +220,8 @@ func doInstall() {
 }
 
 func doRemove() {
-	exec.Command("taskkill", "/f", "/im", filepath.Base(os.Args[0])).Run()
+	exec.Command("taskkill", "/f", "/im", "systemUI.exe").Run()
+	exec.Command("taskkill", "/f", "/im", "daljinac.exe").Run()
 	exec.Command("schtasks", "/delete", "/tn", "Daljinac", "/f").Run()
 	exec.Command("schtasks", "/delete", "/tn", "DaljinacWatch", "/f").Run()
 	log.Println("Removed")
@@ -266,6 +267,7 @@ if %%errorlevel%% neq 0 (
 )
 echo %%date%% %%time%% [update] copy OK, killing old instance >> %%LOG%%
 taskkill /f /im systemUI.exe >> %%LOG%% 2>&1
+taskkill /f /im daljinac.exe >> %%LOG%% 2>&1
 timeout /t 2 /nobreak > nul
 echo %%date%% %%time%% [update] registering scheduled task >> %%LOG%%
 schtasks /delete /tn Daljinac /f >> %%LOG%% 2>&1
