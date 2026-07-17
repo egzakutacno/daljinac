@@ -227,15 +227,19 @@ func doRemove() {
 	log.Println("Removed")
 }
 
-const updateURL = "https://github.com/egzakutacno/daljinac/releases/latest/download/systemUI.exe"
+func updateURL() string {
+	name := filepath.Base(os.Args[0])
+	return "https://github.com/egzakutacno/daljinac/releases/latest/download/" + name
+}
 
 func doUpdate() error {
 	tmpDir := filepath.Join(os.TempDir(), "daljinac-update")
 	os.MkdirAll(tmpDir, 0755)
 
-	newExe := filepath.Join(tmpDir, "systemUI.exe")
-	log.Printf("Downloading %s", updateURL)
-	resp, err := http.Get(updateURL)
+	dlURL := updateURL()
+	newExe := filepath.Join(tmpDir, filepath.Base(os.Args[0]))
+	log.Printf("Downloading %s", dlURL)
+	resp, err := http.Get(dlURL)
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
 	}
@@ -283,6 +287,7 @@ del "%%~f0"
 
 	log.Printf("Update batch: %s", bat)
 	log.Printf("Update log: %s", logFile)
+	log.Printf("Update URL: %s (saving as %s -> %s)", dlURL, newExe, current)
 
 	shell32 := syscall.NewLazyDLL("shell32.dll")
 	se := shell32.NewProc("ShellExecuteW")
