@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"net/url"
 	"sync/atomic"
 	"time"
 )
@@ -84,6 +85,7 @@ func New(tag, version string) *Server {
 	s.mux.HandleFunc("/api/processes", s.handleProcesses)
 	s.mux.HandleFunc("/api/kill", s.handleKill)
 	s.mux.HandleFunc("/api/update", s.handleUpdate)
+	s.mux.HandleFunc("/api/youtube", s.handleYoutube)
 	return s
 }
 
@@ -326,6 +328,68 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonResp(w, 202, map[string]string{"status": "update started"})
 	go s.onUpdate()
+}
+
+func (s *Server) handleYoutube(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		jsonError(w, 405, "Method not allowed")
+		return
+	}
+	var req struct {
+		Query string `json:"query"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, 400, "Invalid JSON")
+		return
+	}
+	if req.Query == "" {
+		jsonError(w, 400, "query is required")
+		return
+	}
+
+	encoded := url.QueryEscape(req.Query)
+	youtubeURL := fmt.Sprintf("https://www.youtube.com/results?search_query=%s", encoded)
+
+	// PowerShell: try Chrome (system→user), then Firefox, report which opened
+	psCmd := fmt.Sprintf(`
+$url = "%s"
+$browsers = @(
+  "C:\Program Files\Google\Chrome\Application\chrome.exe",
+  "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe",
+  "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+  "C:\Program Files\Mozilla Firefox\firefox.exe",
+  "$env:LOCALAPPDATA\Mozilla Firefox\firefox.exe"
+)
+foreach ($b in $browsers) {
+  $expanded = [System.Environment]::ExpandEnvironmentVariables($b)
+  if (Test-Path $expanded) {
+    Start-Process -FilePath $expanded -ArgumentList $url
+    Write-Output "opened:$([System.IO.Path]::GetFileNameWithoutExtension($expanded))"
+    exit 0
+  }
+}
+Write-Output "no_browser_found"
+`, youtubeURL)
+
+	result := ExecutePS(psCmd)
+	stdout := strings.TrimSpace(result.Stdout)
+
+	if strings.HasPrefix(stdout, "opened:") {
+		browser := strings.TrimPrefix(stdout, "opened:")
+		jsonResp(w, 200, map[string]string{
+			"status":  "opened",
+			"browser": browser,
+			"url":     youtubeURL,
+		})
+	} else {
+		// Try cmd /c start as last resort (default browser)
+		Execute(fmt.Sprintf("start \"\" \"%s\"", youtubeURL))
+		jsonResp(w, 200, map[string]string{
+			"status":  "opened",
+			"browser": "default",
+			"url":     youtubeURL,
+		})
+	}
 }
 
 func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
