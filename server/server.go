@@ -96,6 +96,20 @@ func (s *Server) SetOnStatusChange(cb func(AgentStatus)) {
 	s.onStatusChange = cb
 }
 
+func (s *Server) StartWithListener(ln net.Listener) error {
+	s.setStatus(StatusStarting)
+	s.httpSrv = &http.Server{Handler: s.mux}
+	err := s.httpSrv.Serve(ln)
+	if err != nil && err != http.ErrServerClosed {
+		log.Printf("Serve error: %v", err)
+		s.setStatus(StatusError)
+		return err
+	}
+	log.Printf("Serve returned (server closed)")
+	s.setStatus(StatusStopped)
+	return nil
+}
+
 func (s *Server) SetOnUpdate(cb func()) {
 	s.onUpdate = cb
 }

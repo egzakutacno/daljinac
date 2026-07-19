@@ -104,18 +104,31 @@ func main() {
 		return
 	}
 
-	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
 		log.Printf("Port %d in use — another instance running. Exiting.", *port)
 		return
 	}
-	ln.Close()
 
 	shutdown := make(chan struct{})
 	hostname, _ := os.Hostname()
 	log.Printf("Hostname: %s, Version: %s, Port: %d, Tray: %v", hostname, version, *port, !*noTray)
 
 	srv := server.New(*tag, version)
+
+	var t tunnel.Tunnel
+	onConnect := func(url string) {
+		srv.SetInfo("daljinac", hostname, url)
+	}
+
+	// Start HTTP server — ln is already open (port check passed), so Serve cannot fail in startup
+	go func() {
+		defer func() { recover() }()
+		if err := srv.StartWithListener(ln); err != nil {
+			log.Printf("HTTP error: %v", err)
+		}
+	}()
+
 	tr := tray.New(hostname, version)
 	tr.OnUpdate = func() {
 		log.Println("[main] update requested — removing tray icon")
@@ -132,8 +145,6 @@ func main() {
 		}
 	})
 
-	var t tunnel.Tunnel
-
 	tr.OnRestartTunnel = func() {
 		log.Println("[main] restarting tunnel")
 		if t != nil {
@@ -148,12 +159,14 @@ func main() {
 		close(shutdown)
 	}
 
-	onConnect := func(url string) {
+	// Re-set info now that tray exists
+	onConnect = func(url string) {
 		srv.SetInfo("daljinac", hostname, url)
 		tr.SetURL(url)
 		tr.SetRunning()
 		tr.SetStatusIcon(tray.IconConnected)
 	}
+	srv.SetInfo("daljinac", hostname, "")
 
 	if !*noTray {
 		log.Println("[main] waiting for Explorer (3s)...")
@@ -163,14 +176,6 @@ func main() {
 	} else {
 		log.Println("Headless mode")
 	}
-
-	go func() {
-		defer func() { recover() }()
-		addr := fmt.Sprintf(":%d", *port)
-		if err := srv.Start(addr); err != nil {
-			log.Printf("HTTP error: %v", err)
-		}
-	}()
 
 	t = tunnel.NewSSH(*port, hostname, onConnect)
 	t.Start()
