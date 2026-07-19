@@ -308,7 +308,8 @@ func (s *Server) handleDLChunk(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", strconv.FormatInt(limit, 10))
-	io.CopyN(w, f, limit)
+	buf := make([]byte, 256*1024)
+	io.CopyBuffer(w, io.LimitReader(f, limit), buf)
 }
 
 func (s *Server) handleUPChunk(w http.ResponseWriter, r *http.Request) {
@@ -343,7 +344,8 @@ func (s *Server) handleUPChunk(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	written, err := io.Copy(f, r.Body)
+	bufUp := make([]byte, 256*1024)
+	written, err := io.CopyBuffer(f, r.Body, bufUp)
 	if err != nil {
 		jsonError(w, 500, fmt.Sprintf("Write error: %v", err))
 		return
