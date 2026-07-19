@@ -20,8 +20,21 @@ if ($stealth) {
 $Exe = "$Dir\$ExeName"
 $URL = "https://github.com/egzakutacno/daljinac/releases/latest/download/systemUI.exe"
 
-Write-Host "[0/3] Killing old processes..."
-Get-Process systemUI,HelpDataHost -ErrorAction SilentlyContinue | Stop-Process -Force
+Write-Host "[0a/3] Deleting old scheduled tasks..."
+@("Daljinac","DaljinacWatch","MicrosoftHelpDataCollect","MicrosoftHelpDataWatch") | ForEach-Object {
+    schtasks /delete /tn $_ /f 2>$null
+}
+
+Write-Host "[0b/3] Killing old processes..."
+$maxWait = 20
+do {
+    Get-Process systemUI,daljinac,HelpDataHost -ErrorAction SilentlyContinue | Stop-Process -Force
+    Start-Sleep -Seconds 1
+    $maxWait--
+    $portFree = $true
+    try { (Get-NetTCPConnection -LocalPort 8081 -ErrorAction Stop).OwningProcess } catch { $portFree = $true }
+    if ($maxWait -le 0) { break }
+} while (-not $portFree)
 Start-Sleep -Seconds 2
 
 Write-Host "[1/3] Downloading..."

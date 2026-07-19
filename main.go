@@ -105,6 +105,24 @@ func main() {
 			syncLog()
 		}
 	}()
+
+	// Check -stealth, -install, -remove via os.Args BEFORE any init
+	for _, a := range os.Args {
+		if a == "-stealth" {
+			isStealth = true
+		}
+	}
+	for _, a := range os.Args {
+		if a == "-install" {
+			doInstall()
+			return
+		}
+		if a == "-remove" {
+			doRemove()
+			return
+		}
+	}
+
 	writeStartupMarker()
 	initLog()
 	hideConsole()
@@ -114,19 +132,6 @@ func main() {
 	tag := flag.String("tag", "", "Machine tag")
 	noTray := flag.Bool("notray", false, "No system tray")
 	flag.Parse()
-
-	args := flag.Args()
-	if len(args) > 0 && args[0] == "-stealth" {
-		isStealth = true
-	}
-	if len(args) > 0 && args[0] == "-install" {
-		doInstall()
-		return
-	}
-	if len(args) > 0 && args[0] == "-remove" {
-		doRemove()
-		return
-	}
 
 	// Stealth forces no-tray
 	if isStealth {
