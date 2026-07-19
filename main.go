@@ -23,7 +23,7 @@ import (
 )
 
 const maxLogSize = 1 * 1024 * 1024
-const version = "2.6.29"
+const version = "2.6.31"
 const originalExeName = "daljinac.exe"
 
 var logFile *os.File
