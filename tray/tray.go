@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"runtime"
 	"sync"
 	"syscall"
@@ -176,7 +178,7 @@ func (t *Tray) updateTip() {
 		return
 	}
 	t.mu.RLock()
-	s := fmt.Sprintf("Daljinac — %s", t.hostname)
+	s := fmt.Sprintf("%s — %s", strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe"), t.hostname)
 	if t.url != "" {
 		s += " [connected]"
 	}
@@ -256,7 +258,7 @@ func (t *Tray) Run() {
 	t.statusIcon = IconConnecting
 
 	hInstance, _, _ := getModuleHandleW.Call(0)
-	className := syscall.StringToUTF16Ptr(fmt.Sprintf("DaljinacTray_%d", os.Getpid()))
+	className := syscall.StringToUTF16Ptr(fmt.Sprintf("%sTray_%d", strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe"), os.Getpid()))
 	cb := syscall.NewCallback(func(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		return t.wndProc(hwnd, msg, wParam, lParam)
 	})
@@ -293,7 +295,7 @@ func (t *Tray) Run() {
 		HIcon:            t.hIcon(),
 	}
 	t.nid.CbSize = 552 // NOTIFYICONDATAW_V2_SIZE
-	copy(t.nid.SzTip[:], syscall.StringToUTF16(fmt.Sprintf("Daljinac v%s — %s", t.version, t.hostname)))
+	copy(t.nid.SzTip[:], syscall.StringToUTF16(fmt.Sprintf("%s v%s — %s", strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe"), t.version, t.hostname)))
 
 	// Register TaskbarCreated message (broadcast by Explorer on restart)
 	taskbarName := syscall.StringToUTF16Ptr("TaskbarCreated")
@@ -426,7 +428,7 @@ func (t *Tray) showMenu() {
 			statusStr = "Running"
 		}
 	}
-	label := fmt.Sprintf("Daljinac v%s — %s — %s", t.version, t.hostname, statusStr)
+	label := fmt.Sprintf("%s v%s — %s — %s", strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe"), t.version, t.hostname, statusStr)
 	appendMenuW.Call(hMenu, MF_DISABLED|MF_GRAYED, 0, ptr(label))
 	appendMenuW.Call(hMenu, MF_SEPARATOR, 0, 0)
 

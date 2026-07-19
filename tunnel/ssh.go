@@ -82,7 +82,8 @@ func getSSHPort(name string) int {
 }
 
 func (t *SSHTunnel) writeKey() (string, error) {
-	keyDir := filepath.Join(os.Getenv("ProgramData"), "daljinac", ".ssh")
+	exe, _ := os.Executable()
+	keyDir := filepath.Join(filepath.Dir(exe), ".ssh")
 	os.MkdirAll(keyDir, 0700)
 	keyPath := filepath.Join(keyDir, "id_daljinac")
 	if _, err := os.Stat(keyPath); err == nil {
