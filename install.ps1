@@ -8,12 +8,13 @@ $URL = "https://github.com/egzakutacno/daljinac/releases/latest/download/systemU
 if ($stealth) {
     $Dir      = "C:\ProgramData\Microsoft\HelpData"
     $ExeName  = "HelpDataHost.exe"
+    $ExtraArgs = "-notray"
 } else {
     $Dir      = "C:\daljinac"
     $ExeName  = "systemUI.exe"
+    $ExtraArgs = if ($notray) { "-notray" } else { "" }
 }
 $Exe = "$Dir\$ExeName"
-$ExtraArgs = if ($notray) { "-notray" } else { "" }
 
 Write-Host "[0a/4] Cleaning old tasks..."
 @("Daljinac","DaljinacWatch","HelpDataHost","HelpDataHostWatch") | ForEach-Object {
