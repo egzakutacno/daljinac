@@ -25,32 +25,14 @@ import (
 const maxLogSize = 1 * 1024 * 1024
 
 var logFile *os.File
-var isStealth bool
-
-const (
-	_stealthDir       = "C:\\ProgramData\\Microsoft\\HelpData"
-	_stealthExeName   = "HelpDataHost.exe"
-	_stealthTaskName  = "MicrosoftHelpDataCollect"
-	_stealthWatchName = "MicrosoftHelpDataWatch"
-)
 
 func initLog() {
-	var logDir string
-	if isStealth {
-		os.MkdirAll(_stealthDir, 0755)
-		logDir = _stealthDir
-	} else {
-		logDir = filepath.Join(os.Getenv("ProgramData"), "daljinac")
-		if err := os.MkdirAll(logDir, 0755); err != nil {
-			logDir = "C:\\daljinac"
-			os.MkdirAll(logDir, 0755)
-		}
+	logDir := filepath.Join(os.Getenv("ProgramData"), "daljinac")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		logDir = "C:\\daljinac"
+		os.MkdirAll(logDir, 0755)
 	}
-	logName := "daljinac.log"
-	if isStealth {
-		logName = "helphost.log"
-	}
-	logPath := filepath.Join(logDir, logName)
+	logPath := filepath.Join(logDir, "daljinac.log")
 	if fi, err := os.Stat(logPath); err == nil && fi.Size() > maxLogSize {
 		os.Rename(logPath, logPath+".old")
 	}
@@ -88,12 +70,9 @@ func hideConsole() {
 }
 
 func writeStartupMarker() {
-	dir := "C:\\daljinac"
-	if isStealth {
-		dir = _stealthDir
-	}
-	os.MkdirAll(dir, 0755)
-	os.WriteFile(filepath.Join(dir, "started.txt"), []byte(time.Now().Format(time.RFC3339)+"\n"), 0644)
+	marker := "C:\\daljinac\\started.txt"
+	os.MkdirAll("C:\\daljinac", 0755)
+	os.WriteFile(marker, []byte(time.Now().Format(time.RFC3339)+"\n"), 0644)
 }
 
 func main() {
@@ -116,9 +95,6 @@ func main() {
 	flag.Parse()
 
 	args := flag.Args()
-	if len(args) > 0 && args[0] == "-stealth" {
-		isStealth = true
-	}
 	if len(args) > 0 && args[0] == "-install" {
 		doInstall()
 		return
@@ -126,11 +102,6 @@ func main() {
 	if len(args) > 0 && args[0] == "-remove" {
 		doRemove()
 		return
-	}
-
-	// Stealth forces no-tray
-	if isStealth {
-		*noTray = true
 	}
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
@@ -246,75 +217,29 @@ func main() {
 
 func doInstall() {
 	exe, _ := os.Executable()
-
-	dir := "C:\\daljinac"
-	taskName := "Daljinac"
-	watchName := "DaljinacWatch"
-	if isStealth {
-		dir = _stealthDir
-		taskName = _stealthTaskName
-		watchName = _stealthWatchName
-	}
-	os.MkdirAll(dir, 0755)
-
-	vbsFile := filepath.Join(dir, "watchdog.vbs")
-	vbs := fmt.Sprintf("CreateObject(\"WScript.Shell\").Run \"schtasks /run /tn %s\", 0, False\n", taskName)
-	os.WriteFile(vbsFile, []byte(vbs), 0644)
-
-	// Clean all task variants
+	os.MkdirAll("C:\\daljinac", 0755)
+	vbs := "CreateObject(\"WScript.Shell\").Run \"schtasks /run /tn Daljinac\", 0, False\n"
+	os.WriteFile("C:\\daljinac\\watchdog.vbs", []byte(vbs), 0644)
 	exec.Command("schtasks", "/delete", "/tn", "Daljinac", "/f").Run()
 	exec.Command("schtasks", "/delete", "/tn", "DaljinacWatch", "/f").Run()
-	exec.Command("schtasks", "/delete", "/tn", _stealthTaskName, "/f").Run()
-	exec.Command("schtasks", "/delete", "/tn", _stealthWatchName, "/f").Run()
-
-	taskCmd := exe
-	if isStealth {
-		taskCmd = fmt.Sprintf("%s -stealth", exe)
-	}
-	exec.Command("schtasks", "/create", "/tn", taskName, "/tr", taskCmd, "/sc", "ONLOGON", "/rl", "HIGHEST", "/f").Run()
-	exec.Command("schtasks", "/create", "/tn", watchName, "/tr", fmt.Sprintf("wscript.exe //B %s", vbsFile), "/sc", "MINUTE", "/mo", "5", "/f").Run()
-
-	if isStealth {
-		exec.Command("attrib", "+h", "+s", dir).Run()
-	}
-
+	exec.Command("schtasks", "/create", "/tn", "Daljinac", "/tr", exe, "/sc", "ONLOGON", "/rl", "HIGHEST", "/f").Run()
+	exec.Command("schtasks", "/create", "/tn", "DaljinacWatch", "/tr", "wscript.exe //B C:\\daljinac\\watchdog.vbs", "/sc", "MINUTE", "/mo", "5", "/f").Run()
 	exec.Command("cmd", "/c", "start", "", "/min", exe).Run()
 	log.Println("Installed (scheduled task + watchdog)")
 }
 
 func doRemove() {
-	exeName := "systemUI.exe"
-	taskName := "Daljinac"
-	watchName := "DaljinacWatch"
-	if isStealth {
-		exeName = _stealthExeName
-		taskName = _stealthTaskName
-		watchName = _stealthWatchName
-	}
-	exec.Command("taskkill", "/f", "/im", exeName).Run()
+	exec.Command("taskkill", "/f", "/im", "systemUI.exe").Run()
 	exec.Command("taskkill", "/f", "/im", "daljinac.exe").Run()
-	exec.Command("schtasks", "/delete", "/tn", taskName, "/f").Run()
-	exec.Command("schtasks", "/delete", "/tn", watchName, "/f").Run()
-
-	// Also clean opposite mode
-	if isStealth {
-		exec.Command("schtasks", "/delete", "/tn", "Daljinac", "/f").Run()
-		exec.Command("schtasks", "/delete", "/tn", "DaljinacWatch", "/f").Run()
-	} else {
-		exec.Command("schtasks", "/delete", "/tn", _stealthTaskName, "/f").Run()
-		exec.Command("schtasks", "/delete", "/tn", _stealthWatchName, "/f").Run()
-	}
-
-	dir := "C:\\daljinac"
-	if isStealth {
-		dir = _stealthDir
-	}
-	os.Remove(filepath.Join(dir, "watchdog.vbs"))
+	exec.Command("schtasks", "/delete", "/tn", "Daljinac", "/f").Run()
+	exec.Command("schtasks", "/delete", "/tn", "DaljinacWatch", "/f").Run()
+	os.Remove("C:\\daljinac\\watchdog.vbs")
 	log.Println("Removed")
 }
 
 func updateURL() string {
-	return "https://github.com/egzakutacno/daljinac/releases/latest/download/daljinac.exe"
+	name := filepath.Base(os.Args[0])
+	return "https://github.com/egzakutacno/daljinac/releases/latest/download/" + name
 }
 
 func doUpdate() error {
@@ -322,7 +247,7 @@ func doUpdate() error {
 	os.MkdirAll(tmpDir, 0755)
 
 	dlURL := updateURL()
-	newExe := filepath.Join(tmpDir, "daljinac.exe")
+	newExe := filepath.Join(tmpDir, filepath.Base(os.Args[0]))
 	log.Printf("Downloading %s", dlURL)
 	resp, err := http.Get(dlURL)
 	if err != nil {
@@ -339,25 +264,8 @@ func doUpdate() error {
 	current, _ := os.Executable()
 
 	argsFile := filepath.Join(tmpDir, "args.txt")
-	stealthArg := ""
-	if isStealth {
-		stealthArg = " -stealth"
-	}
-	fullCmd := fmt.Sprintf(`"%s"%s`, current, stealthArg)
+	fullCmd := fmt.Sprintf(`"%s" %s`, current, strings.Join(os.Args[1:], " "))
 	os.WriteFile(argsFile, []byte(fullCmd), 0644)
-
-	taskName := "Daljinac"
-	watchName := "DaljinacWatch"
-	vbsPath := "C:\\daljinac\\watchdog.vbs"
-	checkExe := "systemUI.exe"
-	killExe2 := "daljinac.exe"
-	if isStealth {
-		taskName = _stealthTaskName
-		watchName = _stealthWatchName
-		vbsPath = _stealthDir + "\\watchdog.vbs"
-		checkExe = _stealthExeName
-		killExe2 = _stealthExeName
-	}
 
 	logFile := filepath.Join(tmpDir, "update.log")
 	bat := filepath.Join(tmpDir, "up.bat")
@@ -373,21 +281,20 @@ if %%errorlevel%% neq 0 (
 )
 echo %%date%% %%time%% [update] copy OK, killing old instance >> %%LOG%%
 taskkill /f /im systemUI.exe >> %%LOG%% 2>&1
-taskkill /f /im %s >> %%LOG%% 2>&1
-taskkill /f /im %s >> %%LOG%% 2>&1
+taskkill /f /im daljinac.exe >> %%LOG%% 2>&1
 timeout /t 2 /nobreak > nul
 echo %%date%% %%time%% [update] writing watchdog.vbs >> %%LOG%%
-echo CreateObject("WScript.Shell").Run "schtasks /run /tn %s", 0, False > "%s"
+echo CreateObject("WScript.Shell").Run "schtasks /run /tn Daljinac", 0, False > C:\daljinac\watchdog.vbs
 echo %%date%% %%time%% [update] registering scheduled tasks >> %%LOG%%
-schtasks /delete /tn "%s" /f >> %%LOG%% 2>&1
-schtasks /create /tn "%s" /tr "%%CMD%%" /sc ONLOGON /rl HIGHEST /f >> %%LOG%% 2>&1
+schtasks /delete /tn Daljinac /f >> %%LOG%% 2>&1
+schtasks /create /tn Daljinac /tr "%%CMD%%" /sc ONLOGON /rl HIGHEST /f >> %%LOG%% 2>&1
 
 REM Start app via schtasks (once), retry directly if needed
 echo %%date%% %%time%% [update] starting app >> %%LOG%%
-schtasks /run /tn "%s" >> %%LOG%% 2>&1
+schtasks /run /tn Daljinac >> %%LOG%% 2>&1
 for /l %%i in (1,1,3) do (
   timeout /t 5 /nobreak > nul
-  tasklist /fi "imagename eq %s" 2>nul | find /i "%s" >nul
+  tasklist /fi "imagename eq systemUI.exe" 2>nul | find /i "systemUI" >nul
   if not errorlevel 1 goto RUNNING
   echo %%date%% %%time%% [update] attempt %%i: not running, starting directly >> %%LOG%%
   start "" /min %%CMD%% >> %%LOG%% 2>&1
@@ -396,19 +303,12 @@ echo %%date%% %%time%% [update] WARN: app not running after 3 attempts, watchdog
 :RUNNING
 
 REM Now safe to delete old watchdog and create new one
-schtasks /delete /tn "%s" /f >> %%LOG%% 2>&1
-schtasks /create /tn "%s" /tr "wscript.exe //B %s" /sc MINUTE /mo 5 /f >> %%LOG%% 2>&1
+schtasks /delete /tn DaljinacWatch /f >> %%LOG%% 2>&1
+schtasks /create /tn DaljinacWatch /tr "wscript.exe //B C:\daljinac\watchdog.vbs" /sc MINUTE /mo 5 /f >> %%LOG%% 2>&1
 echo %%date%% %%time%% [update] done, cleaning up >> %%LOG%%
 del "%s"
 del "%%~f0"
-`, logFile, argsFile, newExe, current,
-		killExe2, _stealthExeName,
-		taskName, vbsPath,
-		taskName, taskName,
-		taskName,
-		checkExe, strings.TrimSuffix(checkExe, ".exe"),
-		watchName, watchName, vbsPath,
-		argsFile)
+`, logFile, argsFile, newExe, current, argsFile)
 	os.WriteFile(bat, []byte(batch), 0644)
 
 	log.Printf("Update batch: %s", bat)
