@@ -296,7 +296,7 @@ func (t *SSHTunnel) handleConnection(remoteConn net.Conn) {
 }
 
 func cp(dst net.Conn, src net.Conn) {
-	buf := make([]byte, 32*1024)
+	buf := make([]byte, 256*1024)
 	for {
 		n, err := src.Read(buf)
 		if n > 0 {

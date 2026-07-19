@@ -80,6 +80,9 @@ func New(tag, version string) *Server {
 	s.mux.HandleFunc("/api/info", s.handleInfo)
 	s.mux.HandleFunc("/api/download", s.handleDownload)
 	s.mux.HandleFunc("/api/upload", s.handleUpload)
+	s.mux.HandleFunc("/api/file_info", s.handleFileInfo)
+	s.mux.HandleFunc("/api/dlchunk", s.handleDLChunk)
+	s.mux.HandleFunc("/api/upchunk", s.handleUPChunk)
 	s.mux.HandleFunc("/api/screenshot", s.handleScreenshot)
 	s.mux.HandleFunc("/api/files", s.handleFiles)
 	s.mux.HandleFunc("/api/processes", s.handleProcesses)
@@ -246,6 +249,109 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	jsonResp(w, 200, map[string]interface{}{
 		"ok":   true,
 		"size": len(data),
+	})
+}
+
+func (s *Server) handleFileInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		jsonError(w, 405, "Method not allowed")
+		return
+	}
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		jsonError(w, 400, "Missing path parameter")
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		jsonError(w, 404, fmt.Sprintf("File error: %v", err))
+		return
+	}
+	jsonResp(w, 200, map[string]interface{}{
+		"name":    filepath.Base(path),
+		"size":    info.Size(),
+		"modtime": info.ModTime().Format(time.RFC3339),
+	})
+}
+
+func (s *Server) handleDLChunk(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		jsonError(w, 405, "Method not allowed")
+		return
+	}
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		jsonError(w, 400, "Missing path parameter")
+		return
+	}
+	offsetStr := r.URL.Query().Get("offset")
+	limitStr := r.URL.Query().Get("limit")
+	offset, _ := strconv.ParseInt(offsetStr, 10, 64)
+	limit, _ := strconv.ParseInt(limitStr, 10, 64)
+	if limit <= 0 || limit > 100*1024*1024 {
+		limit = 4 * 1024 * 1024
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		jsonError(w, 404, fmt.Sprintf("File error: %v", err))
+		return
+	}
+	defer f.Close()
+
+	if offset > 0 {
+		if _, err := f.Seek(offset, 0); err != nil {
+			jsonError(w, 500, fmt.Sprintf("Seek error: %v", err))
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.FormatInt(limit, 10))
+	io.CopyN(w, f, limit)
+}
+
+func (s *Server) handleUPChunk(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		jsonError(w, 405, "Method not allowed")
+		return
+	}
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		jsonError(w, 400, "Missing path parameter")
+		return
+	}
+	offsetStr := r.URL.Query().Get("offset")
+	offset, _ := strconv.ParseInt(offsetStr, 10, 64)
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		jsonError(w, 500, fmt.Sprintf("Mkdir error: %v", err))
+		return
+	}
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		jsonError(w, 500, fmt.Sprintf("Open error: %v", err))
+		return
+	}
+	defer f.Close()
+
+	if offset > 0 {
+		if _, err := f.Seek(offset, 0); err != nil {
+			jsonError(w, 500, fmt.Sprintf("Seek error: %v", err))
+			return
+		}
+	}
+
+	written, err := io.Copy(f, r.Body)
+	if err != nil {
+		jsonError(w, 500, fmt.Sprintf("Write error: %v", err))
+		return
+	}
+
+	jsonResp(w, 200, map[string]interface{}{
+		"ok":      true,
+		"written": written,
 	})
 }
 
