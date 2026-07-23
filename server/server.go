@@ -84,7 +84,6 @@ func New(tag, version string) *Server {
 	s.mux.HandleFunc("/api/dlchunk", s.handleDLChunk)
 	s.mux.HandleFunc("/api/upchunk", s.handleUPChunk)
 	s.mux.HandleFunc("/api/screenshot", s.handleScreenshot)
-	s.mux.HandleFunc("/api/webcam", s.handleWebcam)
 	s.mux.HandleFunc("/api/files", s.handleFiles)
 	s.mux.HandleFunc("/api/processes", s.handleProcesses)
 	s.mux.HandleFunc("/api/kill", s.handleKill)
@@ -383,27 +382,6 @@ func (s *Server) handleScreenshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-	w.Write(data)
-}
-
-func (s *Server) handleWebcam(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		jsonError(w, 405, "Method not allowed")
-		return
-	}
-	cameraIdx := 0
-	if idx := r.URL.Query().Get("camera"); idx != "" {
-		if n, err := strconv.Atoi(idx); err == nil {
-			cameraIdx = n
-		}
-	}
-	data, err := CaptureWebcam(cameraIdx)
-	if err != nil {
-		jsonError(w, 500, fmt.Sprintf("Webcam error: %v", err))
-		return
-	}
-	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.Write(data)
 }

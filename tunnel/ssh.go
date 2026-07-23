@@ -1,8 +1,10 @@
 package tunnel
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
@@ -74,11 +76,42 @@ func getSSHPort(name string) int {
 		"usermic-m3sii9l":   7083,
 		"desktop-ba967g1":   7084,
 		"sandokan":          7085,
+		"desktop-967o0f8":   7086,
+		"legion":            7086,
 	}
 	if p, ok := m[name]; ok {
 		return p
 	}
 	return 7081
+}
+
+func (t *SSHTunnel) registerWithDaemon(client *ssh.Client) int {
+	session, err := client.NewSession()
+	if err != nil {
+		log.Printf("[ssh] register session error: %v", err)
+		return 0
+	}
+	defer session.Close()
+
+	cmd := fmt.Sprintf("curl -sf http://127.0.0.1:7080/register?hostname=%s", t.serviceName)
+	out, err := session.Output(cmd)
+	if err != nil {
+		log.Printf("[ssh] register call failed: %v", err)
+		return 0
+	}
+
+	var resp struct {
+		Port int `json:"port"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		log.Printf("[ssh] register parse error: %v", err)
+		return 0
+	}
+	if resp.Port > 0 && resp.Port <= 7100 {
+		log.Printf("[ssh] registered as %s -> port %d", t.serviceName, resp.Port)
+		return resp.Port
+	}
+	return 0
 }
 
 func (t *SSHTunnel) writeKey() (string, error) {
@@ -146,6 +179,7 @@ func (t *SSHTunnel) Run() {
 		case <-time.After(delay):
 		}
 		delay = min(delay*2, 30*time.Second)
+		delay += time.Duration(rand.Int63n(int64(delay)+1)) - delay/2
 	}
 }
 
@@ -176,6 +210,16 @@ func (t *SSHTunnel) connect() {
 
 	t.mu.Lock()
 	t.lastConnected = time.Now()
+	t.mu.Unlock()
+
+	// Register with port daemon for unique port assignment
+	if regPort := t.registerWithDaemon(client); regPort > 0 {
+		t.mu.Lock()
+		t.remotePort = regPort
+		t.mu.Unlock()
+	}
+
+	t.mu.Lock()
 	t.url = fmt.Sprintf("http://31.220.74.109:%d", t.remotePort)
 	cb := t.onConnected
 	t.mu.Unlock()
@@ -200,7 +244,7 @@ func (t *SSHTunnel) connect() {
 		case res := <-ch:
 			err = res.e
 			listener = res.l
-		case <-time.After(2 * time.Second):
+		case <-time.After(1 * time.Second):
 			log.Printf("[ssh] port %d: listen timed out (stale session), retrying later", port)
 			client.Close()
 			return
@@ -221,21 +265,7 @@ func (t *SSHTunnel) connect() {
 		return
 	}
 
-	// Keepalive: refresh lastConnected every 30s while tunnel is active
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-t.stopCh:
-				return
-			case <-ticker.C:
-				t.mu.Lock()
-				t.lastConnected = time.Now()
-				t.mu.Unlock()
-			}
-		}
-	}()
+
 
 	acceptCh := make(chan net.Conn)
 	go func() {
